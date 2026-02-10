@@ -26,15 +26,14 @@
 // 
 // Please respect the team's standards for any future contribution
 #endregion
-using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
 
 namespace Gauniv.WebServer.Data
 {
-    public class User : IdentityUser
+    public class Category
     {
-        public string FirstName { get; set; }
-        public string LastName { get; set; }
-        public ICollection<Game> PurchasedGames { get; set; } = new List<Game>();
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public ICollection<Game> Games { get; set; } = new List<Game>();
     }
 }
+
