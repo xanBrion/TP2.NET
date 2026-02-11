@@ -10,9 +10,8 @@ using var reader = new MessagePackStreamReader(stream);
 
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 bool pseudoSent = false;
-bool pieceSent = false;
 
-while (!pseudoSent || !pieceSent)
+while (!pseudoSent)
 {
     var msgpack = await reader.ReadAsync(cts.Token).ConfigureAwait(false);
     if (msgpack == null)
@@ -30,11 +29,6 @@ while (!pseudoSent || !pieceSent)
     {
         SendResponse(stream, "TestPlayer");
         pseudoSent = true;
-    }
-    else if (!pieceSent && request.Payload == "PieceType")
-    {
-        SendResponse(stream, "X");
-        pieceSent = true;
     }
 }
 

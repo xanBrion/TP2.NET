@@ -15,7 +15,6 @@ namespace gameServer.ClientsHandling
 
         public int Id { get; }
         public string Pseudo { get; set; } = "";
-        public string PieceType { get; set; } = "";
         public TcpClient Client { get; }
         public NetworkStream Stream { get; }
 
@@ -59,12 +58,7 @@ namespace gameServer.ClientsHandling
                 Pseudo = responsePseudo.Payload;
             }
 
-            SendMessage(new NetworkMessage { Type = "request", Payload = "PieceType" });
-            var responsePiece = await ReadMessageAsync<NetworkMessage>(cancellationToken).ConfigureAwait(false);
-            if (responsePiece != null)
-            {
-                PieceType = responsePiece.Payload;
-            }
+            
         }
     }
 }
