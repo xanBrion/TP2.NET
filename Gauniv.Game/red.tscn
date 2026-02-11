@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://bv86njvcyab1u"]
+
+[ext_resource type="Texture2D" uid="uid://bplrk5laxhwa1" path="res://art/red.png" id="1_b5d33"]
+[ext_resource type="Script" uid="uid://drdm84rjwyl5f" path="res://Red.cs" id="2_2ja30"]
+
+[node name="Sprite2D" type="Sprite2D" unique_id=148731735]
+position = Vector2(536, 318)
+texture = ExtResource("1_b5d33")
+script = ExtResource("2_2ja30")
