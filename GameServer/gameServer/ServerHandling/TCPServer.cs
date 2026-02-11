@@ -1,89 +1,92 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using MessagePack;
-using System.Buffers.Binary;
+using gameServer.ClientsHandling;
 
 namespace gameServer.ServerHandling
 {
     internal class TCPServer
     {
-        private const int MaxMessageSize = 64 * 1024;
-
         private TcpListener _tcpListener;
-        public TCPServer() { 
-        
-        }
 
-        public void Start()
+
+        private readonly Dictionary<int, Room> _roomsById = new Dictionary<int, Room>();
+        private int _nextRoomId = 1;
+
+        public TCPServer()
         {
-            StartServer();
+
         }
 
-        private void StartServer()
+        public void Start(CancellationToken cancellationToken = default)
+        {
+            StartServerAsync(cancellationToken).GetAwaiter().GetResult();
+        }
+
+        private async Task StartServerAsync(CancellationToken cancellationToken)
         {
             var port = 13000;
-            var hostAddress = IPAddress.Parse("127.0.0.1");
-            _tcpListener = new TcpListener(hostAddress, port); 
+            var hostAddress = IPAddress.Parse("0.0.0.0");
+            _tcpListener = new TcpListener(hostAddress, port);
             _tcpListener.Start();
 
             using TcpClient client = _tcpListener.AcceptTcpClient();
-            var TCPStream = client.GetStream();
-            Console.WriteLine($"[Main] Client connected: {client.Client.RemoteEndPoint}");
-
-            while (true)
-            {   
-
-            if (TryReadMessage<NetworkMessage>(TCPStream, out var receivedMessage))
-            {
+            var player = new Player(client);
             
-                Console.WriteLine($"[Main] Received: {receivedMessage.Type} / {receivedMessage.Payload}");
-            }
+            Console.WriteLine($"[TCPServer] Player {player.Id} : Connected");
+            await player.InitializeAsync(cancellationToken).ConfigureAwait(false);
 
-            }
+            Room? assignedRoom = null;
 
-        }
-
-        private static bool TryReadMessage<T>(NetworkStream stream, out T? message) where T : class
-        {
-            message = null;
-
-            var lengthBuffer = new byte[4];
-            if (!ReadExactly(stream, lengthBuffer, 0, lengthBuffer.Length))
+            foreach (Room room in _roomsById.Values)
             {
-                return false;
-            }
+                Console.WriteLine($"[TCPServer] Player {player.Id} : Checking room {room.Id}");
 
-            int length = BinaryPrimitives.ReadInt32BigEndian(lengthBuffer);
-            if (length <= 0 || length > MaxMessageSize)
+                if (room.IsFull)
+                {
+                    continue;
+                }
+                else
+                {
+                    room.AddPlayer(player);
+                    assignedRoom = room;
+                    break;
+                }
+
+            }
+            if (assignedRoom == null)
             {
-                return false;
+
+                Console.WriteLine($"[TCPServer] Player {player.Id} : No available room, creating new one.");
+                var newRoom = new Room(_nextRoomId++);
+                newRoom.AddPlayer(player);
+                _roomsById.Add(newRoom.Id, newRoom);
+                assignedRoom = newRoom;
+
+                Console.WriteLine($"[TCPServer] Player {player.Id} : Room {newRoom.Id} created and player added.");
+
+
             }
 
-            var payload = new byte[length];
-            if (!ReadExactly(stream, payload, 0, payload.Length))
+
+            while (!cancellationToken.IsCancellationRequested)
             {
-                return false;
+
+                var receivedMessage = await player.ReadMessageAsync<NetworkMessage>(cancellationToken).ConfigureAwait(false);
+                if (receivedMessage == null)
+                {
+                    break;
+                }
+
+                Console.WriteLine($"[TCPServer] Player {player.Id} : Received {receivedMessage.Type} / {receivedMessage.Payload}");
+                assignedRoom?.HandleMessage(player, receivedMessage);
+
             }
 
-            message = MessagePackSerializer.Deserialize<T>(payload);
-            return true;
-        }
-
-        private static bool ReadExactly(Stream stream, byte[] buffer, int offset, int count)
-        {
-            int read;
-            while (count > 0 && (read = stream.Read(buffer, offset, count)) > 0)
-            {
-                offset += read;
-                count -= read;
-            }
-
-            return count == 0;
         }
     }
 

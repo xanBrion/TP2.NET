@@ -1,6 +1,42 @@
-using System.Buffers.Binary;
+using System;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using MessagePack;
+
+using var client = new TcpClient("127.0.0.1", 13000);
+using var stream = client.GetStream();
+using var reader = new MessagePackStreamReader(stream);
+
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+bool pseudoSent = false;
+bool pieceSent = false;
+
+while (!pseudoSent || !pieceSent)
+{
+    var msgpack = await reader.ReadAsync(cts.Token).ConfigureAwait(false);
+    if (msgpack == null)
+    {
+        break;
+    }
+
+    var request = MessagePackSerializer.Deserialize<NetworkMessage>(msgpack.Value, cancellationToken: cts.Token);
+    if (request.Type != "request")
+    {
+        continue;
+    }
+
+    if (!pseudoSent && request.Payload == "Pseudo")
+    {
+        SendResponse(stream, "TestPlayer");
+        pseudoSent = true;
+    }
+    else if (!pieceSent && request.Payload == "PieceType")
+    {
+        SendResponse(stream, "X");
+        pieceSent = true;
+    }
+}
 
 var msg = new NetworkMessage
 {
@@ -8,14 +44,17 @@ var msg = new NetworkMessage
     Payload = "hello"
 };
 
-var payload = MessagePackSerializer.Serialize(msg);
-var lengthPrefix = new byte[4];
-BinaryPrimitives.WriteInt32BigEndian(lengthPrefix, payload.Length);
-
-using var client = new TcpClient("127.0.0.1", 13000);
-using var stream = client.GetStream();
-stream.Write(lengthPrefix, 0, lengthPrefix.Length);
-stream.Write(payload, 0, payload.Length);
+MessagePackSerializer.Serialize(stream, msg);
 stream.Flush();
 
 Console.WriteLine("Sent");
+
+static void SendResponse(NetworkStream stream, string responseValue)
+{
+    MessagePackSerializer.Serialize(stream, new NetworkMessage
+    {
+        Type = "response",
+        Payload = responseValue
+    });
+    stream.Flush();
+}

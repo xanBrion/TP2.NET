@@ -16,7 +16,7 @@ Game
 
 using gameServer.ServerHandling;
 
-Console.WriteLine("Lancement du serveur ...");
+Console.WriteLine("[Program] Server : Lancement du serveur ...");
 var server = new TCPServer();
 server.Start();
 
