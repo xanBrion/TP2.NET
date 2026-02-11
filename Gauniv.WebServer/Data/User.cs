@@ -27,7 +27,6 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
 
 namespace Gauniv.WebServer.Data
 {
