@@ -52,17 +52,40 @@ public class GamesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllGames(string? name, decimal? minPrice, decimal? maxPrice, int? categoryId)
+    public async Task<IActionResult> GetAllGames(
+        string? name,
+        decimal? minPrice,
+        decimal? maxPrice,
+        int[]? categoryIds,
+        bool? owned,
+        long? minSize,
+        long? maxSize)
     {
         var user = await userManager.GetUserAsync(User);
-        var query = db.Games.Include(g => g.Categories).AsQueryable();
 
-        if (!string.IsNullOrEmpty(name)) query = query.Where(g => g.Name.Contains(name));
-        if (minPrice.HasValue) query = query.Where(g => g.Price >= minPrice.Value);
-        if (maxPrice.HasValue) query = query.Where(g => g.Price <= maxPrice.Value);
-        if (categoryId.HasValue) query = query.Where(g => g.Categories.Any(c => c.Id == categoryId));
+        var query = db.Games
+            .Include(g => g.Categories)
+            .Include(g => g.PurchasedByUsers)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(name))
+            query = query.Where(g => g.Name.Contains(name));
+
+        if (minPrice.HasValue)
+            query = query.Where(g => g.Price >= minPrice.Value);
+        if (maxPrice.HasValue)
+            query = query.Where(g => g.Price <= maxPrice.Value);
+
+        if (categoryIds != null && categoryIds.Length > 0)
+            query = query.Where(g => g.Categories.Any(c => categoryIds.Contains(c.Id)));
+
+        if (minSize.HasValue)
+            query = query.Where(g => g.Payload.Length >= minSize.Value);
+        if (maxSize.HasValue)
+            query = query.Where(g => g.Payload.Length <= maxSize.Value);
 
         var games = await query.ToListAsync();
+
         var dto = mapper.Map<List<GameDto>>(games);
 
         if (user != null)
@@ -73,6 +96,15 @@ public class GamesController : ControllerBase
                 .ToHashSet();
 
             dto.ForEach(g => g.Owned = ownedIds.Contains(g.Id));
+
+            if (owned.HasValue)
+            {
+                dto = dto.Where(g => g.Owned == owned.Value).ToList();
+            }
+        }
+        else if (owned.HasValue && owned.Value)
+        {
+            dto = new List<GameDto>();
         }
 
         return Ok(dto);
@@ -126,7 +158,7 @@ public class GamesController : ControllerBase
             Name = dto.Name,
             Description = dto.Description,
             Price = dto.Price,
-            PayloadPath = dto.PayloadPath,
+            Payload = dto.Payload,
             Categories = await db.Categories
                                  .Where(c => dto.Categories.Contains(c.Name))
                                  .ToListAsync()
@@ -141,7 +173,7 @@ public class GamesController : ControllerBase
             Name = game.Name,
             Description = game.Description,
             Price = game.Price,
-            PayloadPath = game.PayloadPath,
+            Payload = game.Payload,
             Categories = game.Categories.Select(c => c.Name).ToList(),
             Owned = false
         });
@@ -160,7 +192,7 @@ public class GamesController : ControllerBase
         game.Name = dto.Name ?? game.Name;
         game.Description = dto.Description ?? game.Description;
         game.Price = dto.Price != 0 ? dto.Price : game.Price;
-        game.PayloadPath = dto.PayloadPath ?? game.PayloadPath;
+        game.Payload = dto.Payload ?? game.Payload;
 
         if (dto.Categories != null && dto.Categories.Any())
         {
@@ -186,7 +218,7 @@ public class GamesController : ControllerBase
             Name = game.Name,
             Description = game.Description,
             Price = game.Price,
-            PayloadPath = game.PayloadPath,
+            Payload = game.Payload,
             Categories = game.Categories.Select(c => c.Name).ToList(),
             Owned = false
         });

@@ -43,7 +43,7 @@ namespace Gauniv.WebServer.Data
         public string Description { get; set; } = string.Empty;
         [Column(TypeName = "decimal(10,2)")]
         public decimal Price { get; set; }
-        public string PayloadPath { get; set; } = string.Empty;
+        public byte[] Payload { get; set; } = Array.Empty<byte>();
         public ICollection<Category> Categories { get; set; } = new List<Category>();
         public ICollection<User> PurchasedByUsers { get; set; } = new List<User>();
     }
