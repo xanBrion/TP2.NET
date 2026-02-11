@@ -32,6 +32,7 @@ using Gauniv.WebServer.Security;
 using Gauniv.WebServer.Services;
 using Gauniv.WebServer.Websocket;
 using Mapster;
+using MapsterMapper;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -92,7 +93,11 @@ builder.Services.AddMapster();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<OnlineService>();
 builder.Services.AddHostedService<SetupService>();
-builder.Services.AddScoped<MappingProfile, MappingProfile>();
+
+var config = TypeAdapterConfig.GlobalSettings;
+config.Scan(typeof(MappingProfile).Assembly);
+builder.Services.AddSingleton(config);
+builder.Services.AddScoped<IMapper, ServiceMapper>();
 
 var app = builder.Build();
 

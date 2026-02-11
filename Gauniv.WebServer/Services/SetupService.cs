@@ -50,27 +50,61 @@ namespace Gauniv.WebServer.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            using (var scope = serviceProvider.CreateScope()) // this will use `IServiceScopeFactory` internally
+            using (var scope = serviceProvider.CreateScope())
             {
                 applicationDbContext = scope.ServiceProvider.GetService<ApplicationDbContext>();
-                var userSignInManager = scope.ServiceProvider.GetService<UserManager<User>>();
-                var signInManager = scope.ServiceProvider.GetService<SignInManager<User>>();
+                var userManager = scope.ServiceProvider.GetService<UserManager<User>>();
+                var roleManager = scope.ServiceProvider.GetService<RoleManager<IdentityRole>>();
 
-                if (applicationDbContext is null)
-                {
-                    throw new Exception("ApplicationDbContext is null");
-                }
+                if (applicationDbContext is null || userManager is null || roleManager is null)
+                    throw new Exception("Required services are null");
 
-                var r = userSignInManager?.CreateAsync(new User()
+                var adminRole = new IdentityRole("Admin");
+                var userRole = new IdentityRole("User");
+                roleManager.CreateAsync(adminRole).Wait();
+                roleManager.CreateAsync(userRole).Wait();
+
+                var testUser = new User
                 {
                     UserName = "test@test.com",
                     Email = "test@test.com",
-                    EmailConfirmed = true
-                }, "password").Result;
+                    EmailConfirmed = true,
+                    FirstName = "Test",
+                    LastName = "User"
+                };
+                userManager.CreateAsync(testUser, "password").Wait();
+                userManager.AddToRoleAsync(testUser, "User").Wait();
 
-                // ....
+                var adminUser = new User
+                {
+                    UserName = "admin@test.com",
+                    Email = "admin@test.com",
+                    EmailConfirmed = true,
+                    FirstName = "Test",
+                    LastName = "Admin"
+                };
+                userManager.CreateAsync(adminUser, "password").Wait();
+                userManager.AddToRoleAsync(adminUser, "Admin").Wait();
 
+                var cat1 = new Category { Name = "Aventure" };
+                var cat2 = new Category { Name = "Stratégie" };
+                applicationDbContext.Categories.AddRange(cat1, cat2);
                 applicationDbContext.SaveChanges();
+
+                var categories = applicationDbContext.Categories.ToList();
+
+                var testGame = new Game
+                {
+                    Name = "JeuTest",
+                    Description = "Un jeu de test",
+                    Price = 9.99M,
+                    Categories = categories
+                };
+                applicationDbContext.Games.Add(testGame);
+                applicationDbContext.SaveChanges();
+
+                testUser.PurchasedGames.Add(testGame);
+                userManager.UpdateAsync(testUser).Wait();
 
                 return Task.CompletedTask;
             }

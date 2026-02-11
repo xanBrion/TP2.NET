@@ -43,7 +43,9 @@ namespace Gauniv.WebServer.Dtos
         public string Description { get; set; } = string.Empty;
         public decimal Price { get; set; }
         public string PayloadPath { get; set; } = string.Empty;
+
         public List<string> Categories { get; set; } = new List<string>();
+
         public bool Owned { get; set; } = false;
     }
 

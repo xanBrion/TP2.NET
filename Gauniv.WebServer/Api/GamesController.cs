@@ -28,28 +28,179 @@
 #endregion
 using Gauniv.WebServer.Data;
 using Gauniv.WebServer.Dtos;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Net.Http.Headers;
-using System.Text;
-using CommunityToolkit.HighPerformance.Memory;
-using CommunityToolkit.HighPerformance;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
 using MapsterMapper;
 using Mapster;
 using Microsoft.EntityFrameworkCore;
 
-namespace Gauniv.WebServer.Api
+
+[Route("api/1.0.0/[controller]/[action]")]
+[ApiController]
+public class GamesController : ControllerBase
 {
-    [Route("api/1.0.0/[controller]/[action]")]
-    [ApiController]
-    public class GamesController(ApplicationDbContext appDbContext, IMapper mapper, UserManager<User> userManager, MappingProfile mp) : ControllerBase
+    private readonly ApplicationDbContext db;
+    private readonly IMapper mapper;
+    private readonly UserManager<User> userManager;
+
+    public GamesController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
     {
-        private readonly ApplicationDbContext appDbContext = appDbContext;
-        private readonly IMapper mapper = mapper;
-        private readonly UserManager<User> userManager = userManager;
-        private readonly MappingProfile mp = mp;
+        this.db = db;
+        this.mapper = mapper;
+        this.userManager = userManager;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAllGames(string? name, decimal? minPrice, decimal? maxPrice, int? categoryId)
+    {
+        var user = await userManager.GetUserAsync(User);
+        var query = db.Games.Include(g => g.Categories).AsQueryable();
+
+        if (!string.IsNullOrEmpty(name)) query = query.Where(g => g.Name.Contains(name));
+        if (minPrice.HasValue) query = query.Where(g => g.Price >= minPrice.Value);
+        if (maxPrice.HasValue) query = query.Where(g => g.Price <= maxPrice.Value);
+        if (categoryId.HasValue) query = query.Where(g => g.Categories.Any(c => c.Id == categoryId));
+
+        var games = await query.ToListAsync();
+        var dto = mapper.Map<List<GameDto>>(games);
+
+        if (user != null)
+        {
+            var ownedIds = games
+                .Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id))
+                .Select(g => g.Id)
+                .ToHashSet();
+
+            dto.ForEach(g => g.Owned = ownedIds.Contains(g.Id));
+        }
+
+        return Ok(dto);
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> GetMyGames()
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        var games = await db.Games
+            .Include(g => g.Categories)
+            .Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id))
+            .ToListAsync();
+
+        var dto = mapper.Map<List<GameDto>>(games);
+        dto.ForEach(g => g.Owned = true);
+
+        return Ok(dto);
+    }
+
+    [HttpPost("{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> Buy(int id)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        var game = await db.Games
+            .Include(g => g.PurchasedByUsers)
+            .FirstOrDefaultAsync(g => g.Id == id);
+
+        if (game == null) return NotFound();
+        if (game.PurchasedByUsers == null) game.PurchasedByUsers = new List<User>();
+
+        if (!game.PurchasedByUsers.Any(u => u.Id == user.Id))
+            game.PurchasedByUsers.Add(user);
+
+        await db.SaveChangesAsync();
+        return Ok();
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Add([FromBody] GameDto dto)
+    {
+        var game = new Game
+        {
+            Name = dto.Name,
+            Description = dto.Description,
+            Price = dto.Price,
+            PayloadPath = dto.PayloadPath,
+            Categories = await db.Categories
+                                 .Where(c => dto.Categories.Contains(c.Name))
+                                 .ToListAsync()
+        };
+
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+
+        return Ok(new GameDto
+        {
+            Id = game.Id,
+            Name = game.Name,
+            Description = game.Description,
+            Price = game.Price,
+            PayloadPath = game.PayloadPath,
+            Categories = game.Categories.Select(c => c.Name).ToList(),
+            Owned = false
+        });
+    }
+
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Update(int id, [FromBody] GameDto dto)
+    {
+        var game = await db.Games
+            .Include(g => g.Categories)
+            .FirstOrDefaultAsync(g => g.Id == id);
+
+        if (game == null) return NotFound();
+
+        game.Name = dto.Name ?? game.Name;
+        game.Description = dto.Description ?? game.Description;
+        game.Price = dto.Price != 0 ? dto.Price : game.Price;
+        game.PayloadPath = dto.PayloadPath ?? game.PayloadPath;
+
+        if (dto.Categories != null && dto.Categories.Any())
+        {
+            var categories = new List<Category>();
+            foreach (var catName in dto.Categories)
+            {
+                var category = await db.Categories.FirstOrDefaultAsync(c => c.Name == catName);
+                if (category == null)
+                {
+                    category = new Category { Name = catName };
+                    db.Categories.Add(category);
+                }
+                categories.Add(category);
+            }
+            game.Categories = categories;
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(new GameDto
+        {
+            Id = game.Id,
+            Name = game.Name,
+            Description = game.Description,
+            Price = game.Price,
+            PayloadPath = game.PayloadPath,
+            Categories = game.Categories.Select(c => c.Name).ToList(),
+            Owned = false
+        });
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var game = await db.Games.FindAsync(id);
+        if (game == null) return NotFound();
+
+        db.Games.Remove(game);
+        await db.SaveChangesAsync();
+        return Ok();
     }
 }
