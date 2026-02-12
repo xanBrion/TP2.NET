@@ -7,7 +7,9 @@ namespace gameServer.ServerHandling
     {
         private const int MaxPlayers = 10;
         private readonly Dictionary<int, Player> _playersById = new Dictionary<int, Player>();
+        private readonly Dictionary<int, Observer> _observersById = new Dictionary<int, Observer>();
         private readonly object _playersLock = new object();
+        private string _lastKnownState = "empty";
 
         public int Id { get; }
 
@@ -28,6 +30,28 @@ namespace gameServer.ServerHandling
         }
 
         public int Capacity => MaxPlayers;
+
+        public int ObserverCount
+        {
+            get
+            {
+                lock (_playersLock)
+                {
+                    return _observersById.Count;
+                }
+            }
+        }
+
+        public int ParticipantCount
+        {
+            get
+            {
+                lock (_playersLock)
+                {
+                    return _playersById.Count + _observersById.Count;
+                }
+            }
+        }
 
         public bool IsFull
         {
@@ -62,6 +86,40 @@ namespace gameServer.ServerHandling
             }
         }
 
+        public bool AddObserver(Observer observer)
+        {
+            lock (_playersLock)
+            {
+                if (_observersById.ContainsKey(observer.Id))
+                {
+                    return false;
+                }
+
+                _observersById.Add(observer.Id, observer);
+                return true;
+            }
+        }
+
+        public void RemoveObserver(int observerId)
+        {
+            lock (_playersLock)
+            {
+                _observersById.Remove(observerId);
+            }
+        }
+
+        public GameStateSnapshot BuildSnapshot()
+        {
+            lock (_playersLock)
+            {
+                return new GameStateSnapshot
+                {
+                    RoomId = Id,
+                    State = _lastKnownState
+                };
+            }
+        }
+
         public void StartGame()
         {
             // TODO: initialize game state
@@ -69,7 +127,23 @@ namespace gameServer.ServerHandling
 
         public void HandleMessage(Player player, IClientMessage message)
         {
-            // TODO: route message to game logic
+            if (message is PlayerDisplacement move)
+            {
+                lock (_playersLock)
+                {
+                    _lastKnownState = move.Payload;
+                    var snapshot = new GameStateSnapshot
+                    {
+                        RoomId = Id,
+                        State = _lastKnownState
+                    };
+
+                    foreach (var observer in _observersById.Values)
+                    {
+                        observer.SendMessage<IServerMessage>(snapshot);
+                    }
+                }
+            }
         }
     }
 }

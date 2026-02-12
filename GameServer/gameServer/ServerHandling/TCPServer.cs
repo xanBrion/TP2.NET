@@ -43,39 +43,103 @@ namespace gameServer.ServerHandling
             {
                 var player = new Player(client);
                 Console.WriteLine($"[TCPServer] Player {player.Id} : Connected");
-                await player.InitializeAsync(cancellationToken).ConfigureAwait(false);
 
-                Room? assignedRoom = null;
-                try
+                var firstMessage = await player.ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
+                if (firstMessage == null)
                 {
-                    assignedRoom = await HandleLobbySelectionAsync(player, cancellationToken).ConfigureAwait(false);
-                    if (assignedRoom == null)
-                    {
-                        Console.WriteLine($"[TCPServer] Player {player.Id} : Disconnected before lobby selection.");
-                        return;
-                    }
-
-                    player.Disconnected += _ => HandlePlayerDisconnected(player, assignedRoom);
-                    Console.WriteLine($"[TCPServer] Player {player.Id} : Joined room {assignedRoom.Id}");
-
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        var receivedMessage = await player.ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
-                        if (receivedMessage == null)
-                        {
-                            break;
-                        }
-
-                        Console.WriteLine($"[TCPServer] Player {player.Id} : Received {receivedMessage.GetType().Name}");
-                        assignedRoom.HandleMessage(player, receivedMessage);
-                    }
+                    Console.WriteLine($"[TCPServer] Player {player.Id} : Disconnected before first message.");
+                    return;
                 }
-                finally
+
+                if (firstMessage is ObserverConnectRequest observeRequest)
                 {
-                    if (assignedRoom != null)
+                    await HandleObserverClientAsync(player, observeRequest, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                if (firstMessage is ClientPseudoResponse pseudoResponse)
+                {
+                    player.Pseudo = pseudoResponse.Pseudo;
+                    await HandlePlayerClientAsync(player, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                player.SendMessage<IServerMessage>(new ErrorResponse { Code = "invalid_first_message" });
+            }
+        }
+
+        private async Task HandlePlayerClientAsync(Player player, CancellationToken cancellationToken)
+        {
+            Room? assignedRoom = null;
+            try
+            {
+                assignedRoom = await HandleLobbySelectionAsync(player, cancellationToken).ConfigureAwait(false);
+                if (assignedRoom == null)
+                {
+                    Console.WriteLine($"[TCPServer] Player {player.Id} : Disconnected before lobby selection.");
+                    return;
+                }
+
+                player.Disconnected += _ => HandlePlayerDisconnected(player, assignedRoom);
+                Console.WriteLine($"[TCPServer] Player {player.Id} : Joined room {assignedRoom.Id}");
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var receivedMessage = await player.ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
+                    if (receivedMessage == null)
                     {
-                        player.NotifyDisconnected();
+                        break;
                     }
+
+                    Console.WriteLine($"[TCPServer] Player {player.Id} : Received {receivedMessage.GetType().Name}");
+                    assignedRoom.HandleMessage(player, receivedMessage);
+                }
+            }
+            finally
+            {
+                if (assignedRoom != null)
+                {
+                    player.NotifyDisconnected();
+                }
+            }
+        }
+
+        private async Task HandleObserverClientAsync(
+            Player player,
+            ObserverConnectRequest observeRequest,
+            CancellationToken cancellationToken)
+        {
+            var observer = new Observer(player);
+            Room? observedRoom = null;
+            try
+            {
+                if (!_roomManager.TryAttachObserver(observeRequest.RoomId, observer, out observedRoom))
+                {
+                    observer.SendMessage<IServerMessage>(new ErrorResponse { Code = "room_not_found" });
+                    return;
+                }
+
+                observer.Disconnected += _ => HandleObserverDisconnected(observer, observedRoom);
+                observer.SendMessage<IServerMessage>(new ObserverJoined { RoomId = observedRoom.Id });
+                observer.SendMessage<IServerMessage>(observedRoom.BuildSnapshot());
+                Console.WriteLine($"[TCPServer] Observer {observer.Id} : Watching room {observedRoom.Id}");
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var message = await observer.ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
+                    if (message == null)
+                    {
+                        break;
+                    }
+
+                    observer.SendMessage<IServerMessage>(new ErrorResponse { Code = "observer_readonly" });
+                }
+            }
+            finally
+            {
+                if (observedRoom != null)
+                {
+                    observer.NotifyDisconnected();
                 }
             }
         }
@@ -142,6 +206,11 @@ namespace gameServer.ServerHandling
         private void HandlePlayerDisconnected(Player player, Room room)
         {
             _roomManager.HandlePlayerDisconnected(player, room);
+        }
+
+        private void HandleObserverDisconnected(Observer observer, Room room)
+        {
+            _roomManager.HandleObserverDisconnected(observer, room);
         }
     }
 }

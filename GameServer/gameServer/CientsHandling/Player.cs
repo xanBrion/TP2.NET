@@ -2,7 +2,6 @@ using System;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using gameServer.ServerHandling;
 using MessagePack;
 
 namespace gameServer.ClientsHandling
@@ -27,13 +26,7 @@ namespace gameServer.ClientsHandling
             Client = client;
             Stream = client.GetStream();
             _streamReader = new MessagePackStreamReader(Stream);
-            // InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
-            Console.WriteLine($"[Player] {Id} : {Pseudo} Connected");
-        }
-
-        public async Task InitializeAsync(CancellationToken cancellationToken)
-        {
-            await InterrogateClientForInfoAsync(cancellationToken).ConfigureAwait(false);
+            Console.WriteLine($"[Player] {Id} : Connected");
         }
 
         public async Task<T?> ReadMessageAsync<T>(CancellationToken cancellationToken) where T : class
@@ -58,21 +51,6 @@ namespace gameServer.ClientsHandling
             if (Interlocked.Exchange(ref _disconnectNotified, 1) == 0)
             {
                 Disconnected?.Invoke(this);
-            }
-        }
-
-        private async Task InterrogateClientForInfoAsync(CancellationToken cancellationToken)
-        {
-            SendMessage<IServerMessage>(new ServerPseudoRequest());
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var response = await ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
-                if (response is ClientPseudoResponse pseudoResponse)
-                {
-                    Pseudo = pseudoResponse.Pseudo;
-                    return;
-                }
             }
         }
     }

@@ -84,7 +84,36 @@ namespace gameServer.ServerHandling
 
             lock (_roomsLock)
             {
-                if (room.PlayerCount == 0)
+                if (room.ParticipantCount == 0)
+                {
+                    _roomsById.Remove(room.Id);
+                    Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");
+                }
+            }
+        }
+
+        public bool TryAttachObserver(int roomId, Observer observer, out Room room)
+        {
+            lock (_roomsLock)
+            {
+                if (_roomsById.TryGetValue(roomId, out room))
+                {
+                    return room.AddObserver(observer);
+                }
+            }
+
+            room = null!;
+            return false;
+        }
+
+        public void HandleObserverDisconnected(Observer observer, Room room)
+        {
+            room.RemoveObserver(observer.Id);
+            Console.WriteLine($"[RoomManager] Observer {observer.Id} : Disconnected from room {room.Id}");
+
+            lock (_roomsLock)
+            {
+                if (room.ParticipantCount == 0)
                 {
                     _roomsById.Remove(room.Id);
                     Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");

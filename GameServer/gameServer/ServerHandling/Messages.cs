@@ -7,6 +7,8 @@ namespace gameServer.ServerHandling
     [Union(1, typeof(LobbyListResponse))]
     [Union(2, typeof(LobbyJoined))]
     [Union(3, typeof(ErrorResponse))]
+    [Union(4, typeof(ObserverJoined))]
+    [Union(5, typeof(GameStateSnapshot))]
     internal interface IServerMessage
     {
     }
@@ -17,6 +19,7 @@ namespace gameServer.ServerHandling
     [Union(3, typeof(LobbyJoinRequest))]
     [Union(4, typeof(LobbyCreateRequest))]
     [Union(5, typeof(PlayerDisplacement))]
+    [Union(6, typeof(ObserverConnectRequest))]
     internal interface IClientMessage
     {
     }
@@ -63,6 +66,13 @@ namespace gameServer.ServerHandling
     }
 
     [MessagePackObject]
+    internal sealed class ObserverConnectRequest : IClientMessage
+    {
+        [Key(0)]
+        public int RoomId { get; set; }
+    }
+
+    [MessagePackObject]
     internal sealed class LobbyInfo
     {
         [Key(0)]
@@ -94,5 +104,22 @@ namespace gameServer.ServerHandling
     {
         [Key(0)]
         public string Code { get; set; } = "";
+    }
+
+    [MessagePackObject]
+    internal sealed class ObserverJoined : IServerMessage
+    {
+        [Key(0)]
+        public int RoomId { get; set; }
+    }
+
+    [MessagePackObject]
+    internal sealed class GameStateSnapshot : IServerMessage
+    {
+        [Key(0)]
+        public int RoomId { get; set; }
+
+        [Key(1)]
+        public string State { get; set; } = "";
     }
 }

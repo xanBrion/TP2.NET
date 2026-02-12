@@ -8,133 +8,212 @@ using var client = new TcpClient("127.0.0.1", 13000);
 using var stream = client.GetStream();
 using var reader = new MessagePackStreamReader(stream);
 
-await HandlePseudoHandshakeAsync(reader, stream).ConfigureAwait(false);
+Console.WriteLine("Choose mode:");
+Console.WriteLine("1) player");
+Console.WriteLine("2) observer");
+Console.Write("choice> ");
+var modeInput = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
 
-bool joined = false;
-int joinedRoomId = -1;
-
-while (true)
+if (modeInput == "2" || modeInput == "observer")
 {
-    if (!joined)
+    await RunObserverModeAsync(reader, stream).ConfigureAwait(false);
+    return;
+}
+
+await RunPlayerModeAsync(reader, stream).ConfigureAwait(false);
+
+static async Task RunPlayerModeAsync(MessagePackStreamReader reader, NetworkStream stream)
+{
+    Console.Write("pseudo> ");
+    var pseudo = (Console.ReadLine() ?? "").Trim();
+    if (string.IsNullOrWhiteSpace(pseudo))
     {
-        Console.WriteLine("\nLobby menu:");
-        Console.WriteLine("1) list lobbies");
-        Console.WriteLine("2) quick join");
-        Console.WriteLine("3) join lobby by id");
-        Console.WriteLine("4) create lobby");
-        Console.WriteLine("0) quit");
-        Console.Write("choice> ");
+        pseudo = "TestPlayer";
+    }
 
-        var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
-        if (input == "0" || input == "quit")
-        {
-            break;
-        }
+    SendClientMessage(stream, new ClientPseudoResponse { Pseudo = pseudo });
 
-        switch (input)
+    bool joined = false;
+    int joinedRoomId = -1;
+
+    while (true)
+    {
+        if (!joined)
         {
-            case "1":
-            case "list":
-                SendClientMessage(stream, new LobbyListRequest());
-                await PrintLobbyListAsync(reader).ConfigureAwait(false);
-                break;
-            case "2":
-            case "quickjoin":
+            Console.WriteLine("\nLobby menu:");
+            Console.WriteLine("1) list lobbies");
+            Console.WriteLine("2) quick join");
+            Console.WriteLine("3) join lobby by id");
+            Console.WriteLine("4) create lobby");
+            Console.WriteLine("0) quit");
+            Console.Write("choice> ");
+
+            var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+            if (input == "0" || input == "quit")
             {
-                SendClientMessage(stream, new QuickJoinRequest());
-                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
-                if (joinResult.success)
-                {
-                    joined = true;
-                    joinedRoomId = joinResult.roomId;
-                }
                 break;
             }
-            case "3":
-            case "join":
+
+            switch (input)
             {
-                Console.Write("room id> ");
-                var idText = (Console.ReadLine() ?? "").Trim();
-                if (!int.TryParse(idText, out var roomId) || roomId <= 0)
+                case "1":
+                case "list":
+                    SendClientMessage(stream, new LobbyListRequest());
+                    await PrintLobbyListAsync(reader).ConfigureAwait(false);
+                    break;
+                case "2":
+                case "quickjoin":
                 {
-                    Console.WriteLine("Invalid room id.");
+                    SendClientMessage(stream, new QuickJoinRequest());
+                    var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                    if (joinResult.success)
+                    {
+                        joined = true;
+                        joinedRoomId = joinResult.roomId;
+                    }
                     break;
                 }
-
-                SendClientMessage(stream, new LobbyJoinRequest { RoomId = roomId });
-                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
-                if (joinResult.success)
+                case "3":
+                case "join":
                 {
-                    joined = true;
-                    joinedRoomId = joinResult.roomId;
+                    Console.Write("room id> ");
+                    var idText = (Console.ReadLine() ?? "").Trim();
+                    if (!int.TryParse(idText, out var roomId) || roomId <= 0)
+                    {
+                        Console.WriteLine("Invalid room id.");
+                        break;
+                    }
+
+                    SendClientMessage(stream, new LobbyJoinRequest { RoomId = roomId });
+                    var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                    if (joinResult.success)
+                    {
+                        joined = true;
+                        joinedRoomId = joinResult.roomId;
+                    }
+                    break;
                 }
-                break;
-            }
-            case "4":
-            case "create":
-            {
-                SendClientMessage(stream, new LobbyCreateRequest());
-                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
-                if (joinResult.success)
+                case "4":
+                case "create":
                 {
-                    joined = true;
-                    joinedRoomId = joinResult.roomId;
+                    SendClientMessage(stream, new LobbyCreateRequest());
+                    var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                    if (joinResult.success)
+                    {
+                        joined = true;
+                        joinedRoomId = joinResult.roomId;
+                    }
+                    break;
                 }
-                break;
+                default:
+                    Console.WriteLine("Unknown choice.");
+                    break;
             }
-            default:
-                Console.WriteLine("Unknown choice.");
-                break;
         }
-    }
-    else
-    {
-        Console.WriteLine($"\nGame menu (room {joinedRoomId}):");
-        Console.WriteLine("1) send move");
-        Console.WriteLine("0) quit");
-        Console.Write("choice> ");
-
-        var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
-        if (input == "0" || input == "quit")
+        else
         {
-            break;
-        }
+            Console.WriteLine($"\nGame menu (room {joinedRoomId}):");
+            Console.WriteLine("1) send move");
+            Console.WriteLine("0) quit");
+            Console.Write("choice> ");
 
-        switch (input)
-        {
-            case "1":
-            case "move":
+            var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+            if (input == "0" || input == "quit")
             {
-                Console.Write("payload> ");
-                var payload = (Console.ReadLine() ?? "").Trim();
-                SendClientMessage(stream, new PlayerDisplacement { Payload = payload });
-                Console.WriteLine("Move sent.");
                 break;
             }
-            default:
-                Console.WriteLine("Unknown choice.");
-                break;
+
+            switch (input)
+            {
+                case "1":
+                case "move":
+                {
+                    Console.Write("payload> ");
+                    var payload = (Console.ReadLine() ?? "").Trim();
+                    SendClientMessage(stream, new PlayerDisplacement { Payload = payload });
+                    Console.WriteLine("Move sent.");
+                    break;
+                }
+                default:
+                    Console.WriteLine("Unknown choice.");
+                    break;
+            }
         }
     }
 }
 
-static async Task HandlePseudoHandshakeAsync(
-    MessagePackStreamReader reader,
-    NetworkStream stream)
+static async Task RunObserverModeAsync(MessagePackStreamReader reader, NetworkStream stream)
 {
+    Console.Write("room id to observe> ");
+    var idText = (Console.ReadLine() ?? "").Trim();
+    if (!int.TryParse(idText, out var roomId) || roomId <= 0)
+    {
+        Console.WriteLine("Invalid room id.");
+        return;
+    }
+
+    SendClientMessage(stream, new ObserverConnectRequest { RoomId = roomId });
+
+    var joinReply = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+    if (joinReply is ErrorResponse error)
+    {
+        Console.WriteLine($"Observer error: {error.Code}");
+        return;
+    }
+
+    if (joinReply is not ObserverJoined joined)
+    {
+        Console.WriteLine("Did not receive observer join confirmation.");
+        return;
+    }
+
+    Console.WriteLine($"Observing room {joined.RoomId}.");
+
+    var initialSnapshot = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+    if (initialSnapshot is GameStateSnapshot initialState)
+    {
+        Console.WriteLine($"Current state: {initialState.State}");
+    }
+
     while (true)
     {
-        var request = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-        if (request == null)
+        Console.WriteLine("\nObserver menu:");
+        Console.WriteLine("1) wait for next state update");
+        Console.WriteLine("0) quit");
+        Console.Write("choice> ");
+
+        var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+        if (input == "0" || input == "quit")
         {
-            throw new InvalidOperationException("Handshake timed out.");
+            break;
         }
 
-        if (request is ServerPseudoRequest)
+        if (input != "1" && input != "wait")
         {
-            SendClientMessage(stream, new ClientPseudoResponse { Pseudo = "TestPlayer" });
-            return;
+            Console.WriteLine("Unknown choice.");
+            continue;
         }
+
+        var response = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(60)).ConfigureAwait(false);
+        if (response == null)
+        {
+            Console.WriteLine("No update within timeout.");
+            continue;
+        }
+
+        if (response is GameStateSnapshot snapshot)
+        {
+            Console.WriteLine($"State update (room {snapshot.RoomId}): {snapshot.State}");
+            continue;
+        }
+
+        if (response is ErrorResponse updateError)
+        {
+            Console.WriteLine($"Server error: {updateError.Code}");
+            continue;
+        }
+
+        Console.WriteLine($"Received: {response.GetType().Name}");
     }
 }
 
