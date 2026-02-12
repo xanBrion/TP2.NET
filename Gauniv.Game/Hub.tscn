@@ -116,3 +116,4 @@ text = "Quit"
 
 [connection signal="pressed" from="Create" to="." method="OnCreateRoom"]
 [connection signal="pressed" from="Join" to="." method="OnJoinRoom"]
+[connection signal="pressed" from="Quit" to="." method="OnQuit"]

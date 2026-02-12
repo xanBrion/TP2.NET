@@ -43,6 +43,9 @@ public partial class Hub : Control
 		AddRoom(newRoom);
 	}
 
+	private void OnQuit() { 
+		GetTree().Quit(); 
+	}
 	private void OnJoinRoom()
 	{
 		var selected = _roomsList.GetSelectedItems();
