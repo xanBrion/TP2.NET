@@ -17,6 +17,7 @@ namespace gameServer.ClientsHandling
 
         public int Id { get; }
         public string Pseudo { get; set; } = "";
+        public bool Ready { get; set; }
         public TcpClient Client { get; }
         public NetworkStream Stream { get; }
 

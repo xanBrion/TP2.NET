@@ -6,6 +6,8 @@ using MessagePack;
 [Union(3, typeof(ErrorResponse))]
 [Union(4, typeof(ObserverJoined))]
 [Union(5, typeof(GameStateSnapshot))]
+[Union(6, typeof(PlayerReadyChanged))]
+[Union(7, typeof(GameStarted))]
 public interface IServerMessage
 {
 }
@@ -17,6 +19,7 @@ public interface IServerMessage
 [Union(4, typeof(LobbyCreateRequest))]
 [Union(5, typeof(PlayerDisplacement))]
 [Union(6, typeof(ObserverConnectRequest))]
+[Union(7, typeof(PlayerReadyUpdate))]
 public interface IClientMessage
 {
 }
@@ -70,6 +73,13 @@ public sealed class ObserverConnectRequest : IClientMessage
 }
 
 [MessagePackObject]
+public sealed class PlayerReadyUpdate : IClientMessage
+{
+    [Key(0)]
+    public bool Ready { get; set; }
+}
+
+[MessagePackObject]
 public sealed class LobbyJoined : IServerMessage
 {
     [Key(0)]
@@ -98,4 +108,24 @@ public sealed class GameStateSnapshot : IServerMessage
 
     [Key(1)]
     public string State { get; set; } = "";
+}
+
+[MessagePackObject]
+public sealed class PlayerReadyChanged : IServerMessage
+{
+    [Key(0)]
+    public int RoomId { get; set; }
+
+    [Key(1)]
+    public int PlayerId { get; set; }
+
+    [Key(2)]
+    public bool Ready { get; set; }
+}
+
+[MessagePackObject]
+public sealed class GameStarted : IServerMessage
+{
+    [Key(0)]
+    public int RoomId { get; set; }
 }
