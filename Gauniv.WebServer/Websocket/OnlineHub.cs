@@ -27,13 +27,12 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using Gauniv.WebServer.Data;
-using Gauniv.WebServer.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 
-public class OnlineStatus()
+public class OnlineStatus
 {
-    public User User { get; set; }
+    public User User { get; set; } = null!;
     public int Count { get; set; }
 }
 
@@ -41,8 +40,8 @@ namespace Gauniv.WebServer.Websocket
 {
     public class OnlineHub : Hub
     {
+        public static Dictionary<string, OnlineStatus> ConnectedUsers = new();
 
-        public static Dictionary<string, OnlineStatus> ConnectedUsers = [];
         private readonly UserManager<User> userManager;
 
         public OnlineHub(UserManager<User> userManager)
@@ -50,12 +49,102 @@ namespace Gauniv.WebServer.Websocket
             this.userManager = userManager;
         }
 
-        public async override Task OnConnectedAsync()
+        public override async Task OnConnectedAsync()
         {
+            var user = await userManager.GetUserAsync(Context.User);
+            if (user == null)
+                return;
+
+            lock (ConnectedUsers)
+            {
+                if (!ConnectedUsers.ContainsKey(user.Id))
+                {
+                    ConnectedUsers[user.Id] = new OnlineStatus
+                    {
+                        User = user,
+                        Count = 1
+                    };
+
+                    user.Status = UserStatus.Online;
+                }
+                else
+                {
+                    ConnectedUsers[user.Id].Count++;
+                }
+            }
+
+            await userManager.UpdateAsync(user);
+
+            await Clients.All.SendAsync(
+                "UserStatusChanged",
+                user.Id,
+                user.Status
+            );
+
+            await base.OnConnectedAsync();
         }
 
-        public async override Task OnDisconnectedAsync(Exception? exception)
+        public override async Task OnDisconnectedAsync(Exception? exception)
         {
+            var user = await userManager.GetUserAsync(Context.User);
+            if (user == null)
+                return;
+
+            lock (ConnectedUsers)
+            {
+                if (ConnectedUsers.ContainsKey(user.Id))
+                {
+                    ConnectedUsers[user.Id].Count--;
+
+                    if (ConnectedUsers[user.Id].Count <= 0)
+                    {
+                        ConnectedUsers.Remove(user.Id);
+
+                        user.Status = UserStatus.Offline;
+                    }
+                }
+            }
+
+            await userManager.UpdateAsync(user);
+
+            await Clients.All.SendAsync(
+                "UserStatusChanged",
+                user.Id,
+                user.Status
+            );
+
+            await base.OnDisconnectedAsync(exception);
+        }
+        public async Task SetInGame()
+        {
+            var user = await userManager.GetUserAsync(Context.User);
+            if (user == null)
+                return;
+
+            user.Status = UserStatus.InGame;
+            await userManager.UpdateAsync(user);
+
+            await Clients.All.SendAsync(
+                "UserStatusChanged",
+                user.Id,
+                user.Status
+            );
+        }
+
+        public async Task SetOnline()
+        {
+            var user = await userManager.GetUserAsync(Context.User);
+            if (user == null)
+                return;
+
+            user.Status = UserStatus.Online;
+            await userManager.UpdateAsync(user);
+
+            await Clients.All.SendAsync(
+                "UserStatusChanged",
+                user.Id,
+                user.Status
+            );
         }
     }
 }
