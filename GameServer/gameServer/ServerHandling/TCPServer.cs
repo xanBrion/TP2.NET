@@ -45,26 +45,27 @@ namespace gameServer.ServerHandling
                 Console.WriteLine($"[TCPServer] Player {player.Id} : Connected");
 
                 var firstMessage = await player.ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
-                if (firstMessage == null)
-                {
-                    Console.WriteLine($"[TCPServer] Player {player.Id} : Disconnected before first message.");
-                    return;
-                }
 
-                if (firstMessage is ObserverConnectRequest observeRequest)
+                switch (firstMessage)
                 {
-                    await HandleObserverClientAsync(player, observeRequest, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
+                    case null:
+                        Console.WriteLine($"[TCPServer] Player {player.Id} : Disconnected before first message.");
+                        return;
 
-                if (firstMessage is ClientPseudoResponse pseudoResponse)
-                {
-                    player.Pseudo = pseudoResponse.Pseudo;
-                    await HandlePlayerClientAsync(player, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
+                    case ObserverConnectRequest observeRequest:
+                        await HandleObserverClientAsync(player, observeRequest, cancellationToken).ConfigureAwait(false);
+                        return;
 
-                player.SendMessage<IServerMessage>(new ErrorResponse { Code = "invalid_first_message" });
+                    case ClientPseudoResponse pseudoResponse:
+                        player.Pseudo = pseudoResponse.Pseudo;
+                        Console.WriteLine($"[TCPServer] Player {player.Id} : Set pseudo to '{player.Pseudo}'");
+                        await HandlePlayerClientAsync(player, cancellationToken).ConfigureAwait(false);
+                        return;
+
+                    default:
+                        player.SendMessage<IServerMessage>(new ErrorResponse { Code = "invalid_first_message" });
+                        return;
+                }
             }
         }
 
@@ -157,46 +158,46 @@ namespace gameServer.ServerHandling
                 switch (message)
                 {
                     case QuickJoinRequest:
-                    {
-                        var room = _roomManager.QuickJoin(player);
-                        player.SendMessage<IServerMessage>(new LobbyJoined { RoomId = room.Id });
-                        return room;
-                    }
-                    case LobbyListRequest:
-                    {
-                        var lobbyList = _roomManager.GetLobbyList();
-                        player.SendMessage<IServerMessage>(new LobbyListResponse { Lobbies = lobbyList });
-                        break;
-                    }
-                    case LobbyJoinRequest joinRequest:
-                    {
-                        var roomId = joinRequest.RoomId;
-                        if (roomId <= 0)
                         {
-                            player.SendMessage<IServerMessage>(new ErrorResponse { Code = "invalid_room_id" });
-                            break;
-                        }
-
-                        if (_roomManager.TryJoinRoom(roomId, player, out var room))
-                        {
+                            var room = _roomManager.QuickJoin(player);
                             player.SendMessage<IServerMessage>(new LobbyJoined { RoomId = room.Id });
                             return room;
                         }
+                    case LobbyListRequest:
+                        {
+                            var lobbyList = _roomManager.GetLobbyList();
+                            player.SendMessage<IServerMessage>(new LobbyListResponse { Lobbies = lobbyList });
+                            break;
+                        }
+                    case LobbyJoinRequest joinRequest:
+                        {
+                            var roomId = joinRequest.RoomId;
+                            if (roomId <= 0)
+                            {
+                                player.SendMessage<IServerMessage>(new ErrorResponse { Code = "invalid_room_id" });
+                                break;
+                            }
 
-                        player.SendMessage<IServerMessage>(new ErrorResponse { Code = "room_not_found_or_full" });
-                        break;
-                    }
+                            if (_roomManager.TryJoinRoom(roomId, player, out var room))
+                            {
+                                player.SendMessage<IServerMessage>(new LobbyJoined { RoomId = room.Id });
+                                return room;
+                            }
+
+                            player.SendMessage<IServerMessage>(new ErrorResponse { Code = "room_not_found_or_full" });
+                            break;
+                        }
                     case LobbyCreateRequest:
-                    {
-                        var room = _roomManager.CreateRoomAndJoin(player);
-                        player.SendMessage<IServerMessage>(new LobbyJoined { RoomId = room.Id });
-                        return room;
-                    }
+                        {
+                            var room = _roomManager.CreateRoomAndJoin(player);
+                            player.SendMessage<IServerMessage>(new LobbyJoined { RoomId = room.Id });
+                            return room;
+                        }
                     default:
-                    {
-                        player.SendMessage<IServerMessage>(new ErrorResponse { Code = "unknown_lobby_action" });
-                        break;
-                    }
+                        {
+                            player.SendMessage<IServerMessage>(new ErrorResponse { Code = "unknown_lobby_action" });
+                            break;
+                        }
                 }
             }
 
