@@ -10,8 +10,11 @@ namespace gameServer.ClientsHandling
     internal class Player
     {
         private static int _nextId = 0;
+        private int _disconnectNotified = 0;
 
         private readonly MessagePackStreamReader _streamReader;
+
+        public event Action<Player>? Disconnected;
 
         public int Id { get; }
         public string Pseudo { get; set; } = "";
@@ -24,7 +27,8 @@ namespace gameServer.ClientsHandling
             Client = client;
             Stream = client.GetStream();
             _streamReader = new MessagePackStreamReader(Stream);
-            Console.WriteLine($"[Player] {Id} : Connected");
+            // InitializeAsync(CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine($"[Player] {Id} : {Pseudo} Connected");
         }
 
         public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -47,6 +51,14 @@ namespace gameServer.ClientsHandling
         {
             MessagePackSerializer.Serialize(Stream, message);
             Stream.Flush();
+        }
+
+        public void NotifyDisconnected()
+        {
+            if (Interlocked.Exchange(ref _disconnectNotified, 1) == 0)
+            {
+                Disconnected?.Invoke(this);
+            }
         }
 
         private async Task InterrogateClientForInfoAsync(CancellationToken cancellationToken)

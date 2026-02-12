@@ -8,62 +8,126 @@ using var client = new TcpClient("127.0.0.1", 13000);
 using var stream = client.GetStream();
 using var reader = new MessagePackStreamReader(stream);
 
-using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+await HandlePseudoHandshakeAsync(reader, stream).ConfigureAwait(false);
 
-await HandlePseudoHandshakeAsync(reader, stream, cts.Token).ConfigureAwait(false);
+bool joined = false;
+int joinedRoomId = -1;
 
-var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "auto";
-switch (mode)
+while (true)
 {
-    case "quickjoin":
-        SendClientMessage(stream, new QuickJoinRequest());
-        if (!await WaitForJoinAsync(reader, cts.Token).ConfigureAwait(false))
-        {
-            return;
-        }
-        break;
-    case "list":
-        SendClientMessage(stream, new LobbyListRequest());
-        await PrintLobbyListAsync(reader, cts.Token).ConfigureAwait(false);
-        return;
-    case "join":
-        if (args.Length < 2 || !int.TryParse(args[1], out var roomId))
-        {
-            Console.WriteLine("Usage: TestClient join <roomId>");
-            return;
-        }
-        SendClientMessage(stream, new LobbyJoinRequest { RoomId = roomId });
-        if (!await WaitForJoinAsync(reader, cts.Token).ConfigureAwait(false))
-        {
-            return;
-        }
-        break;
-    case "create":
-        SendClientMessage(stream, new LobbyCreateRequest());
-        if (!await WaitForJoinAsync(reader, cts.Token).ConfigureAwait(false))
-        {
-            return;
-        }
-        break;
-    default:
-        await AutoJoinAsync(reader, stream, cts.Token).ConfigureAwait(false);
-        break;
-}
+    if (!joined)
+    {
+        Console.WriteLine("\nLobby menu:");
+        Console.WriteLine("1) list lobbies");
+        Console.WriteLine("2) quick join");
+        Console.WriteLine("3) join lobby by id");
+        Console.WriteLine("4) create lobby");
+        Console.WriteLine("0) quit");
+        Console.Write("choice> ");
 
-SendClientMessage(stream, new PlacementPionMessage { Payload = "hello" });
-Console.WriteLine("Sent");
+        var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+        if (input == "0" || input == "quit")
+        {
+            break;
+        }
+
+        switch (input)
+        {
+            case "1":
+            case "list":
+                SendClientMessage(stream, new LobbyListRequest());
+                await PrintLobbyListAsync(reader).ConfigureAwait(false);
+                break;
+            case "2":
+            case "quickjoin":
+            {
+                SendClientMessage(stream, new QuickJoinRequest());
+                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                if (joinResult.success)
+                {
+                    joined = true;
+                    joinedRoomId = joinResult.roomId;
+                }
+                break;
+            }
+            case "3":
+            case "join":
+            {
+                Console.Write("room id> ");
+                var idText = (Console.ReadLine() ?? "").Trim();
+                if (!int.TryParse(idText, out var roomId) || roomId <= 0)
+                {
+                    Console.WriteLine("Invalid room id.");
+                    break;
+                }
+
+                SendClientMessage(stream, new LobbyJoinRequest { RoomId = roomId });
+                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                if (joinResult.success)
+                {
+                    joined = true;
+                    joinedRoomId = joinResult.roomId;
+                }
+                break;
+            }
+            case "4":
+            case "create":
+            {
+                SendClientMessage(stream, new LobbyCreateRequest());
+                var joinResult = await WaitForJoinAsync(reader).ConfigureAwait(false);
+                if (joinResult.success)
+                {
+                    joined = true;
+                    joinedRoomId = joinResult.roomId;
+                }
+                break;
+            }
+            default:
+                Console.WriteLine("Unknown choice.");
+                break;
+        }
+    }
+    else
+    {
+        Console.WriteLine($"\nGame menu (room {joinedRoomId}):");
+        Console.WriteLine("1) send move");
+        Console.WriteLine("0) quit");
+        Console.Write("choice> ");
+
+        var input = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+        if (input == "0" || input == "quit")
+        {
+            break;
+        }
+
+        switch (input)
+        {
+            case "1":
+            case "move":
+            {
+                Console.Write("payload> ");
+                var payload = (Console.ReadLine() ?? "").Trim();
+                SendClientMessage(stream, new PlayerDisplacement { Payload = payload });
+                Console.WriteLine("Move sent.");
+                break;
+            }
+            default:
+                Console.WriteLine("Unknown choice.");
+                break;
+        }
+    }
+}
 
 static async Task HandlePseudoHandshakeAsync(
     MessagePackStreamReader reader,
-    NetworkStream stream,
-    CancellationToken cancellationToken)
+    NetworkStream stream)
 {
     while (true)
     {
-        var request = await ReadMessageAsync<IServerMessage>(reader, cancellationToken).ConfigureAwait(false);
+        var request = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         if (request == null)
         {
-            return;
+            throw new InvalidOperationException("Handshake timed out.");
         }
 
         if (request is ServerPseudoRequest)
@@ -74,47 +138,10 @@ static async Task HandlePseudoHandshakeAsync(
     }
 }
 
-static async Task AutoJoinAsync(
-    MessagePackStreamReader reader,
-    NetworkStream stream,
-    CancellationToken cancellationToken)
+static async Task PrintLobbyListAsync(MessagePackStreamReader reader)
 {
-    SendClientMessage(stream, new LobbyListRequest());
-    var lobbyListMessage = await ReadMessageAsync<IServerMessage>(reader, cancellationToken).ConfigureAwait(false);
-    if (lobbyListMessage is not LobbyListResponse lobbyList)
-    {
-        Console.WriteLine("No lobby list response.");
-        return;
-    }
-
-    LobbyInfo? targetLobby = null;
-    foreach (var lobby in lobbyList.Lobbies)
-    {
-        if (lobby.PlayerCount < lobby.Capacity)
-        {
-            targetLobby = lobby;
-            break;
-        }
-    }
-
-    if (targetLobby != null)
-    {
-        SendClientMessage(stream, new LobbyJoinRequest { RoomId = targetLobby.Id });
-    }
-    else
-    {
-        SendClientMessage(stream, new LobbyCreateRequest());
-    }
-
-    await WaitForJoinAsync(reader, cancellationToken).ConfigureAwait(false);
-}
-
-static async Task PrintLobbyListAsync(
-    MessagePackStreamReader reader,
-    CancellationToken cancellationToken)
-{
-    var lobbyListMessage = await ReadMessageAsync<IServerMessage>(reader, cancellationToken).ConfigureAwait(false);
-    if (lobbyListMessage is not LobbyListResponse lobbyList)
+    var response = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+    if (response is not LobbyListResponse lobbyList)
     {
         Console.WriteLine("No lobby list response.");
         return;
@@ -132,29 +159,27 @@ static async Task PrintLobbyListAsync(
     }
 }
 
-static async Task<bool> WaitForJoinAsync(
-    MessagePackStreamReader reader,
-    CancellationToken cancellationToken)
+static async Task<(bool success, int roomId)> WaitForJoinAsync(MessagePackStreamReader reader)
 {
     while (true)
     {
-        var response = await ReadMessageAsync<IServerMessage>(reader, cancellationToken).ConfigureAwait(false);
+        var response = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         if (response == null)
         {
-            Console.WriteLine("Disconnected before join.");
-            return false;
+            Console.WriteLine("Timed out waiting for server.");
+            return (false, -1);
         }
 
         if (response is LobbyJoined joined)
         {
             Console.WriteLine($"Joined lobby {joined.RoomId}");
-            return true;
+            return (true, joined.RoomId);
         }
 
         if (response is ErrorResponse error)
         {
             Console.WriteLine($"Lobby error: {error.Code}");
-            return false;
+            return (false, -1);
         }
     }
 }
@@ -165,13 +190,23 @@ static void SendClientMessage(NetworkStream stream, IClientMessage message)
     stream.Flush();
 }
 
-static async Task<T?> ReadMessageAsync<T>(MessagePackStreamReader reader, CancellationToken cancellationToken) where T : class
+static async Task<T?> ReadMessageAsync<T>(
+    MessagePackStreamReader reader,
+    TimeSpan timeout) where T : class
 {
-    var msgpack = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-    if (msgpack == null)
+    using var cts = new CancellationTokenSource(timeout);
+    try
+    {
+        var msgpack = await reader.ReadAsync(cts.Token).ConfigureAwait(false);
+        if (msgpack == null)
+        {
+            return null;
+        }
+
+        return MessagePackSerializer.Deserialize<T>(msgpack.Value, cancellationToken: cts.Token);
+    }
+    catch (OperationCanceledException)
     {
         return null;
     }
-
-    return MessagePackSerializer.Deserialize<T>(msgpack.Value, cancellationToken: cancellationToken);
 }

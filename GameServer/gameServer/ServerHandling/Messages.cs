@@ -16,7 +16,7 @@ namespace gameServer.ServerHandling
     [Union(2, typeof(LobbyListRequest))]
     [Union(3, typeof(LobbyJoinRequest))]
     [Union(4, typeof(LobbyCreateRequest))]
-    [Union(5, typeof(PlacementPionMessage))]
+    [Union(5, typeof(PlayerDisplacement))]
     internal interface IClientMessage
     {
     }
@@ -56,7 +56,7 @@ namespace gameServer.ServerHandling
     }
 
     [MessagePackObject]
-    internal sealed class PlacementPionMessage : IClientMessage
+    internal sealed class PlayerDisplacement : IClientMessage
     {
         [Key(0)]
         public string Payload { get; set; } = "";

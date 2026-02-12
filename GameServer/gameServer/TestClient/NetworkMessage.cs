@@ -13,7 +13,7 @@ public interface IServerMessage
 [Union(2, typeof(LobbyListRequest))]
 [Union(3, typeof(LobbyJoinRequest))]
 [Union(4, typeof(LobbyCreateRequest))]
-[Union(5, typeof(PlacementPionMessage))]
+[Union(5, typeof(PlayerDisplacement))]
 public interface IClientMessage
 {
 }
@@ -53,7 +53,7 @@ public sealed class LobbyCreateRequest : IClientMessage
 }
 
 [MessagePackObject]
-public sealed class PlacementPionMessage : IClientMessage
+public sealed class PlayerDisplacement : IClientMessage
 {
     [Key(0)]
     public string Payload { get; set; } = "";
