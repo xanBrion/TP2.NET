@@ -91,6 +91,7 @@ builder.Services.AddMapster();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<OnlineService>();
 builder.Services.AddHostedService<SetupService>();
+builder.Services.AddHttpClient();
 
 var config = TypeAdapterConfig.GlobalSettings;
 config.Scan(typeof(MappingProfile).Assembly);

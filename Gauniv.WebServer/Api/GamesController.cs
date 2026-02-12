@@ -43,23 +43,27 @@ public class GamesController : ControllerBase
     private readonly ApplicationDbContext db;
     private readonly IMapper mapper;
     private readonly UserManager<User> userManager;
+    private readonly string storageRoot = Path.Combine(Directory.GetCurrentDirectory(), "GamesStorage");
 
     public GamesController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
     {
         this.db = db;
         this.mapper = mapper;
         this.userManager = userManager;
+
+        if (!Directory.Exists(storageRoot))
+            Directory.CreateDirectory(storageRoot);
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAllGames(
-        string? name,
-        decimal? minPrice,
-        decimal? maxPrice,
-        int[]? categoryIds,
-        bool? owned,
-        long? minSize,
-        long? maxSize)
+        [FromQuery] string? name,
+        [FromQuery] decimal? minPrice,
+        [FromQuery] decimal? maxPrice,
+        [FromQuery] int[]? categoryIds,
+        [FromQuery] bool? owned,
+        [FromQuery] long? minSize,
+        [FromQuery] long? maxSize)
     {
         var user = await userManager.GetUserAsync(User);
 
@@ -77,35 +81,36 @@ public class GamesController : ControllerBase
             query = query.Where(g => g.Price <= maxPrice.Value);
 
         if (categoryIds != null && categoryIds.Length > 0)
-            query = query.Where(g => g.Categories.Any(c => categoryIds.Contains(c.Id)));
+        {
+            query = query.Where(g =>
+                g.Categories.Count(c => categoryIds.Contains(c.Id)) == categoryIds.Length);
+        }
 
         if (minSize.HasValue)
             query = query.Where(g => g.PayloadSize >= minSize.Value);
         if (maxSize.HasValue)
             query = query.Where(g => g.PayloadSize <= maxSize.Value);
 
+        if (owned.HasValue && user != null)
+        {
+            if (owned.Value)
+                query = query.Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id));
+            else
+                query = query.Where(g => g.PurchasedByUsers.All(u => u.Id != user.Id));
+        }
+
         var games = await query.ToListAsync();
 
-        var dto = mapper.Map<List<GameDto>>(games);
-
-        if (user != null)
+        var dto = games.Select(g => new GameDto
         {
-            var ownedIds = games
-                .Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id))
-                .Select(g => g.Id)
-                .ToHashSet();
-
-            dto.ForEach(g => g.Owned = ownedIds.Contains(g.Id));
-
-            if (owned.HasValue)
-            {
-                dto = dto.Where(g => g.Owned == owned.Value).ToList();
-            }
-        }
-        else if (owned.HasValue && owned.Value)
-        {
-            dto = new List<GameDto>();
-        }
+            Id = g.Id,
+            Name = g.Name,
+            Description = g.Description,
+            Price = g.Price,
+            PayloadSize = g.PayloadSize,
+            Categories = g.Categories.Select(c => c.Name).ToList(),
+            Owned = user != null && g.PurchasedByUsers.Any(u => u.Id == user.Id)
+        }).ToList();
 
         return Ok(dto);
     }
@@ -122,8 +127,16 @@ public class GamesController : ControllerBase
             .Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id))
             .ToListAsync();
 
-        var dto = mapper.Map<List<GameDto>>(games);
-        dto.ForEach(g => g.Owned = true);
+        var dto = games.Select(g => new GameDto
+        {
+            Id = g.Id,
+            Name = g.Name,
+            Description = g.Description,
+            Price = g.Price,
+            PayloadSize = g.PayloadSize,
+            Categories = g.Categories.Select(c => c.Name).ToList(),
+            Owned = true
+        }).ToList();
 
         return Ok(dto);
     }
@@ -140,8 +153,6 @@ public class GamesController : ControllerBase
             .FirstOrDefaultAsync(g => g.Id == id);
 
         if (game == null) return NotFound();
-        if (game.PurchasedByUsers == null) game.PurchasedByUsers = new List<User>();
-
         if (!game.PurchasedByUsers.Any(u => u.Id == user.Id))
             game.PurchasedByUsers.Add(user);
 
@@ -151,20 +162,39 @@ public class GamesController : ControllerBase
 
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Add([FromBody] CreateGameDto dto)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Add([FromForm] CreateGameDto dto)
     {
+        if (dto.PayloadFile == null || dto.PayloadFile.Length == 0)
+            return BadRequest("A game file must be uploaded.");
+
         var game = new Game
         {
             Name = dto.Name,
             Description = dto.Description,
             Price = dto.Price,
-            PayloadSize = dto.PayloadSize,
+            PayloadPath = "",
+            PayloadSize = 0,
             Categories = await db.Categories
-                                .Where(c => dto.Categories.Contains(c.Name))
-                                .ToListAsync()
+                .Where(c => dto.Categories.Contains(c.Name))
+                .ToListAsync()
         };
 
         db.Games.Add(game);
+        await db.SaveChangesAsync();
+
+        var gameFolder = Path.Combine(storageRoot, $"game-{game.Id}");
+        if (Directory.Exists(gameFolder))
+            Directory.Delete(gameFolder, true);
+        Directory.CreateDirectory(gameFolder);
+
+        var filePath = Path.Combine(gameFolder, "payload.exe");
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+            await dto.PayloadFile.CopyToAsync(stream);
+
+        game.PayloadPath = filePath;
+        game.PayloadSize = dto.PayloadFile.Length;
+
         await db.SaveChangesAsync();
 
         return Ok(new GameDto
@@ -181,7 +211,8 @@ public class GamesController : ControllerBase
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateGameDto dto)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Update(int id, [FromForm] UpdateGameDto dto)
     {
         var game = await db.Games
             .Include(g => g.Categories)
@@ -191,28 +222,32 @@ public class GamesController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(dto.Name))
             game.Name = dto.Name;
-
         if (!string.IsNullOrWhiteSpace(dto.Description))
             game.Description = dto.Description;
-
         if (dto.Price.HasValue)
             game.Price = dto.Price.Value;
 
-        if (dto.PayloadSize.HasValue)
-            game.PayloadSize = dto.PayloadSize.Value;
+        if (dto.PayloadFile != null && dto.PayloadFile.Length > 0)
+        {
+
+            var gameFolder = Path.Combine(storageRoot, $"game-{game.Id}");
+            Directory.CreateDirectory(gameFolder);
+
+            var filePath = Path.Combine(gameFolder, "payload.exe");
+
+            game.PayloadPath = filePath;
+            game.PayloadSize = dto.PayloadFile.Length;
+        }
 
         if (dto.Categories != null)
         {
             var categories = new List<Category>();
-
             foreach (var catName in dto.Categories)
             {
                 var category = await db.Categories.FirstOrDefaultAsync(c => c.Name == catName)
                             ?? new Category { Name = catName };
-
                 categories.Add(category);
             }
-
             game.Categories = categories;
         }
 
@@ -220,6 +255,7 @@ public class GamesController : ControllerBase
 
         return Ok(new GameDto
         {
+            Id = game.Id,
             Name = game.Name,
             Description = game.Description,
             Price = game.Price,
@@ -236,6 +272,10 @@ public class GamesController : ControllerBase
         var game = await db.Games.FindAsync(id);
         if (game == null) return NotFound();
 
+        var folder = Path.GetDirectoryName(game.PayloadPath);
+        if (folder != null && Directory.Exists(folder))
+            Directory.Delete(folder, true);
+
         db.Games.Remove(game);
         await db.SaveChangesAsync();
         return Ok();
@@ -246,10 +286,10 @@ public class GamesController : ControllerBase
     public async Task<IActionResult> Download(int id)
     {
         var game = await db.Games.FindAsync(id);
-        if (game == null) return NotFound();
+        if (game == null || !System.IO.File.Exists(game.PayloadPath))
+            return NotFound();
 
-        var stream = System.IO.File.OpenRead(game.PayloadPath);
-        return File(stream, "application/octet-stream", $"{game.Name}.zip");
+        var stream = new FileStream(game.PayloadPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
+        return File(stream, "application/octet-stream", Path.GetFileName(game.PayloadPath), enableRangeProcessing: true);
     }
-
 }

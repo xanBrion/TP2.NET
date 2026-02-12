@@ -32,7 +32,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
-using Gauniv.WebServer.Dtos;
 using Gauniv.WebServer.Websocket;
 
 [Route("api/1.0.0/[controller]/[action]")]
@@ -72,10 +71,12 @@ public class StatsController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AvgGamesPerUser()
     {
-        var avg = await db.Users
-            .Select(u => u.PurchasedGames.Count)
-            .DefaultIfEmpty(0)
-            .AverageAsync();
+        var users = await db.Users
+            .Include(u => u.PurchasedGames)
+            .ToListAsync();
+
+        var avg = users.Any() ? users.Average(u => u.PurchasedGames.Count) : 0;
+
         return Ok(avg);
     }
 

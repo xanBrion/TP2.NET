@@ -27,92 +27,119 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using Gauniv.WebServer.Data;
-using Gauniv.WebServer.Websocket;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages;
-using System.Text;
 
 namespace Gauniv.WebServer.Services
 {
     public class SetupService : IHostedService
     {
-        private ApplicationDbContext? applicationDbContext;
         private readonly IServiceProvider serviceProvider;
-        private Task? task;
+        private ApplicationDbContext? dbContext;
+
+        private readonly string storageRoot = Path.Combine(Directory.GetCurrentDirectory(), "GamesStorage");
 
         public SetupService(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
+            if (!Directory.Exists(storageRoot))
+                Directory.CreateDirectory(storageRoot);
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            using (var scope = serviceProvider.CreateScope())
+            using var scope = serviceProvider.CreateScope();
+
+            dbContext = scope.ServiceProvider.GetService<ApplicationDbContext>();
+            var userManager = scope.ServiceProvider.GetService<UserManager<User>>();
+            var roleManager = scope.ServiceProvider.GetService<RoleManager<IdentityRole>>();
+
+            if (dbContext == null || userManager == null || roleManager == null)
+                throw new Exception("Required services are null");
+
+            var roles = new[] { "Admin", "User" };
+            foreach (var roleName in roles)
             {
-                applicationDbContext = scope.ServiceProvider.GetService<ApplicationDbContext>();
-                var userManager = scope.ServiceProvider.GetService<UserManager<User>>();
-                var roleManager = scope.ServiceProvider.GetService<RoleManager<IdentityRole>>();
-
-                if (applicationDbContext is null || userManager is null || roleManager is null)
-                    throw new Exception("Required services are null");
-
-                var adminRole = new IdentityRole("Admin");
-                var userRole = new IdentityRole("User");
-                roleManager.CreateAsync(adminRole).Wait();
-                roleManager.CreateAsync(userRole).Wait();
-
-                var testUser = new User
-                {
-                    UserName = "test@test.com",
-                    Email = "test@test.com",
-                    EmailConfirmed = true,
-                    FirstName = "Test",
-                    LastName = "User"
-                };
-                userManager.CreateAsync(testUser, "password").Wait();
-                userManager.AddToRoleAsync(testUser, "User").Wait();
-
-                var adminUser = new User
-                {
-                    UserName = "admin@test.com",
-                    Email = "admin@test.com",
-                    EmailConfirmed = true,
-                    FirstName = "Test",
-                    LastName = "Admin"
-                };
-                userManager.CreateAsync(adminUser, "password").Wait();
-                userManager.AddToRoleAsync(adminUser, "Admin").Wait();
-
-                var cat1 = new Category { Name = "Aventure" };
-                var cat2 = new Category { Name = "Stratégie" };
-                applicationDbContext.Categories.AddRange(cat1, cat2);
-                applicationDbContext.SaveChanges();
-
-                var categories = applicationDbContext.Categories.ToList();
-
-                var testGame = new Game
-                {
-                    Name = "JeuTest",
-                    Description = "Un jeu de test",
-                    Price = 9.99M,
-                    Categories = categories
-                };
-                applicationDbContext.Games.Add(testGame);
-                applicationDbContext.SaveChanges();
-
-                testUser.PurchasedGames.Add(testGame);
-                userManager.UpdateAsync(testUser).Wait();
-
-                return Task.CompletedTask;
+                if (!roleManager.Roles.Any(r => r.Name == roleName))
+                    roleManager.CreateAsync(new IdentityRole(roleName)).Wait();
             }
-        }
 
-        public Task StopAsync(CancellationToken cancellationToken)
-        {
+            var adminUser = CreateUser(userManager, "admin@test.com", "Admin", "User", "password", "Admin");
+            var testUser = CreateUser(userManager, "test@test.com", "Test", "User", "password", "User");
+
+            var categoryNames = new[] { "Aventure", "Stratégie", "RPG", "Simulation", "Puzzle" };
+            var categories = new List<Category>();
+            foreach (var name in categoryNames)
+            {
+                var cat = dbContext.Categories.FirstOrDefault(c => c.Name == name)
+                          ?? new Category { Name = name };
+                if (cat.Id == 0)
+                    dbContext.Categories.Add(cat);
+                categories.Add(cat);
+            }
+            dbContext.SaveChanges();
+
+            var testGames = new[]
+            {
+                new { Name = "Epic Adventure", Description = "Un RPG épique plein de quêtes.", Price = 19.99M, Categories = new [] { "Aventure", "RPG" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" },
+                new { Name = "Puzzle Mania", Description = "Résolvez des puzzles complexes.", Price = 4.99M, Categories = new [] { "Puzzle" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" },
+                new { Name = "Strategy King", Description = "Dominez vos ennemis grâce à votre stratégie.", Price = 14.99M, Categories = new [] { "Stratégie" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" }
+            };
+
+            foreach (var g in testGames)
+            {
+                var game = new Game
+                {
+                    Name = g.Name,
+                    Description = g.Description,
+                    Price = g.Price,
+                    Categories = dbContext.Categories.Where(c => g.Categories.Contains(c.Name)).ToList()
+                };
+
+                dbContext.Games.Add(game);
+                dbContext.SaveChanges();
+
+                var gameFolder = Path.Combine(storageRoot, $"game-{game.Id}");
+                if (Directory.Exists(gameFolder))
+                    Directory.Delete(gameFolder, true);
+                Directory.CreateDirectory(gameFolder);
+
+                var destPath = Path.Combine(gameFolder, "payload.exe");
+                File.Copy(g.PayloadFile, destPath, true);
+
+                game.PayloadPath = destPath;
+                game.PayloadSize = new FileInfo(destPath).Length;
+
+                dbContext.SaveChanges();
+
+                testUser.PurchasedGames.Add(game);
+            }
+
+            userManager.UpdateAsync(testUser).Wait();
+
             return Task.CompletedTask;
         }
+
+        private User CreateUser(UserManager<User> userManager, string email, string firstName, string lastName, string password, string role)
+        {
+            var user = userManager.Users.FirstOrDefault(u => u.Email == email);
+            if (user == null)
+            {
+                user = new User
+                {
+                    UserName = email,
+                    Email = email,
+                    EmailConfirmed = true,
+                    FirstName = firstName,
+                    LastName = lastName
+                };
+                userManager.CreateAsync(user, password).Wait();
+            }
+            if (!userManager.IsInRoleAsync(user, role).Result)
+                userManager.AddToRoleAsync(user, role).Wait();
+            return user;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

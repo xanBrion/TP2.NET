@@ -33,6 +33,7 @@ using Microsoft.AspNetCore.Authorization;
 using MapsterMapper;
 using Mapster;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 
 [Route("api/1.0.0/[controller]/[action]")]
 [ApiController]
@@ -40,11 +41,13 @@ public class CategoriesController : ControllerBase
 {
     private readonly ApplicationDbContext db;
     private readonly IMapper mapper;
+    private readonly UserManager<User> userManager;
 
-    public CategoriesController(ApplicationDbContext db, IMapper mapper)
+    public CategoriesController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
     {
         this.db = db;
         this.mapper = mapper;
+        this.userManager = userManager;
     }
 
     [HttpGet]
