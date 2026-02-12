@@ -28,7 +28,6 @@
 #endregion
 using Gauniv.WebServer.Websocket;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 
 namespace Gauniv.WebServer.Services
 {

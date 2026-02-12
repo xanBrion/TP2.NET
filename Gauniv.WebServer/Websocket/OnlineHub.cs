@@ -34,6 +34,7 @@ public class OnlineStatus
 {
     public User User { get; set; } = null!;
     public int Count { get; set; }
+    public int? CurrentGameId { get; set; }
 }
 
 namespace Gauniv.WebServer.Websocket
@@ -115,20 +116,25 @@ namespace Gauniv.WebServer.Websocket
 
             await base.OnDisconnectedAsync(exception);
         }
-        public async Task SetInGame()
+        public async Task SetInGame(int gameId)
         {
-            var user = await userManager.GetUserAsync(Context.User);
-            if (user == null)
-                return;
+            var principal = Context.User;
+            if (principal == null) return;
 
-            user.Status = UserStatus.InGame;
+            var user = await userManager.GetUserAsync(principal);
+            if (user == null) return;
+
+            lock(ConnectedUsers)
+            {
+                if (ConnectedUsers.TryGetValue(user.Id, out var status))
+                {
+                    status.CurrentGameId = gameId;
+                    user.Status = UserStatus.InGame;
+                }
+            }
+
             await userManager.UpdateAsync(user);
-
-            await Clients.All.SendAsync(
-                "UserStatusChanged",
-                user.Id,
-                user.Status
-            );
+            await Clients.All.SendAsync("UserStatusChanged", user.Id, user.Status, gameId);
         }
 
         public async Task SetOnline()

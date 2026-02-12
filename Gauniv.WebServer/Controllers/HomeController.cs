@@ -30,6 +30,7 @@ using System.Diagnostics;
 using Gauniv.WebServer.Data;
 using Gauniv.WebServer.Dtos;
 using Gauniv.WebServer.Models;
+using Gauniv.WebServer.Websocket;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -121,6 +122,20 @@ namespace Gauniv.WebServer.Controllers
             if (isAdmin)
             {
                 var categories = await db.Categories.Include(c => c.Games).ToListAsync();
+                
+                int maxSimultaneousPlayers = OnlineHub.ConnectedUsers.Values.Sum(u => u.Count);
+
+                var maxPlayersPerGame = OnlineHub.ConnectedUsers
+                    .Where(u => u.Value.CurrentGameId.HasValue)
+                    .GroupBy(u => u.Value.CurrentGameId.Value)
+                    .Select(g => new GamePlayerStatDto
+                    {
+                        GameName = categories.SelectMany(c => c.Games)
+                                            .FirstOrDefault(game => game.Id == g.Key)?.Name ?? $"Jeu {g.Key}",
+                        MaxPlayers = g.Count()
+                    })
+                    .ToList();
+
                 model.Stats = new StatsViewModel
                 {
                     TotalGames = await db.Games.CountAsync(),
@@ -130,8 +145,8 @@ namespace Gauniv.WebServer.Controllers
                         Count = c.Games.Count
                     }).ToList(),
                     AvgGamesPerUser = await db.Users.Select(u => u.PurchasedGames.Count).AverageAsync(),
-                    MaxSimultaneousPlayers = 0,
-                    MaxPlayersPerGame = new List<GamePlayerStatDto>()
+                    MaxSimultaneousPlayers = maxSimultaneousPlayers,
+                    MaxPlayersPerGame = maxPlayersPerGame
                 };
             }
 
