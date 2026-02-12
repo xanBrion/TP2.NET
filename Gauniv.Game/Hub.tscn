@@ -1,0 +1,118 @@
+[gd_scene format=3 uid="uid://bf10grdxlalbf"]
+
+[ext_resource type="Script" uid="uid://c22j5ysdl5d0j" path="res://Hub.cs" id="1_xn0c7"]
+[ext_resource type="FontFile" uid="uid://be3gd4advvstv" path="res://fonts/Xolonium-Regular.ttf" id="2_fvavt"]
+
+[node name="Hub" type="Control" unique_id=665124294]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_xn0c7")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1440455292]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.11448223, 0.254993, 0.2425439, 1)
+
+[node name="Message" type="Label" parent="." unique_id=534120984]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 78.0
+grow_horizontal = 2
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 64
+text = "Dodge the Creeps!"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="Message2" type="Label" parent="." unique_id=1832652228]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 93.0
+offset_bottom = 132.0
+grow_horizontal = 2
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Rooms"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="RoomsList" type="ItemList" parent="." unique_id=693239450]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -562.0
+offset_top = -125.0
+offset_right = 562.0
+offset_bottom = 125.0
+grow_horizontal = 2
+grow_vertical = 2
+allow_reselect = true
+
+[node name="Create" type="Button" parent="." unique_id=414311938]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -113.0
+offset_top = -509.0
+offset_right = 113.0
+offset_bottom = -462.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Create Room"
+
+[node name="Join" type="Button" parent="." unique_id=1368342580]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -41.0
+offset_top = -164.0
+offset_right = 41.0
+offset_bottom = -117.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Join"
+
+[node name="Quit" type="Button" parent="." unique_id=1364839101]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -38.5
+offset_top = -93.0
+offset_right = 38.5
+offset_bottom = -46.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Quit"
+
+[connection signal="pressed" from="Create" to="." method="OnCreateRoom"]
+[connection signal="pressed" from="Join" to="." method="OnJoinRoom"]
