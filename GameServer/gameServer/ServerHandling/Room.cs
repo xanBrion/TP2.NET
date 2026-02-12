@@ -7,6 +7,7 @@ namespace gameServer.ServerHandling
     {
         private const int MaxPlayers = 10;
         private readonly Dictionary<int, Player> _playersById = new Dictionary<int, Player>();
+        private readonly object _playersLock = new object();
 
         public int Id { get; }
 
@@ -15,22 +16,50 @@ namespace gameServer.ServerHandling
             Id = id;
         }
 
-        public bool IsFull => _playersById.Count >= MaxPlayers;
+        public int PlayerCount
+        {
+            get
+            {
+                lock (_playersLock)
+                {
+                    return _playersById.Count;
+                }
+            }
+        }
+
+        public int Capacity => MaxPlayers;
+
+        public bool IsFull
+        {
+            get
+            {
+                lock (_playersLock)
+                {
+                    return _playersById.Count >= MaxPlayers;
+                }
+            }
+        }
 
         public bool AddPlayer(Player player)
         {
-            if (IsFull || _playersById.ContainsKey(player.Id))
+            lock (_playersLock)
             {
-                return false;
-            }
+                if (_playersById.Count >= MaxPlayers || _playersById.ContainsKey(player.Id))
+                {
+                    return false;
+                }
 
-            _playersById.Add(player.Id, player);
-            return true;
+                _playersById.Add(player.Id, player);
+                return true;
+            }
         }
 
         public void RemovePlayer(int playerId)
         {
-            _playersById.Remove(playerId);
+            lock (_playersLock)
+            {
+                _playersById.Remove(playerId);
+            }
         }
 
         public void StartGame()
@@ -38,7 +67,7 @@ namespace gameServer.ServerHandling
             // TODO: initialize game state
         }
 
-        public void HandleMessage(Player player, NetworkMessage message)
+        public void HandleMessage(Player player, IClientMessage message)
         {
             // TODO: route message to game logic
         }

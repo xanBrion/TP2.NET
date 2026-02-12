@@ -51,14 +51,17 @@ namespace gameServer.ClientsHandling
 
         private async Task InterrogateClientForInfoAsync(CancellationToken cancellationToken)
         {
-            SendMessage(new NetworkMessage { Type = "request", Payload = "Pseudo" });
-            var responsePseudo = await ReadMessageAsync<NetworkMessage>(cancellationToken).ConfigureAwait(false);
-            if (responsePseudo != null)
-            {
-                Pseudo = responsePseudo.Payload;
-            }
+            SendMessage<IServerMessage>(new ServerPseudoRequest());
 
-            
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var response = await ReadMessageAsync<IClientMessage>(cancellationToken).ConfigureAwait(false);
+                if (response is ClientPseudoResponse pseudoResponse)
+                {
+                    Pseudo = pseudoResponse.Pseudo;
+                    return;
+                }
+            }
         }
     }
 }
