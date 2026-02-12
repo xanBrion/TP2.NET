@@ -2,13 +2,19 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
+public partial class Room
+{
+	public int playerCount;
+	public int playerLimit;
+	public int id;
+}
 public partial class Hub : Control
 {
 	private ItemList _roomsList;
 	private Button _createButton;
 	private Button _joinButton;
 
-	private List<string> _rooms = new();
+	private List<Room> _rooms = new();
 	private int _roomCounter = 1;
 
 	public override void _Ready()
@@ -22,15 +28,16 @@ public partial class Hub : Control
 	{
 	}
 
-	private void AddRoom(string name)
+	private void AddRoom(Room newRoom)
 	{
-		_rooms.Add(name);
-		_roomsList.AddItem(name);
+		_rooms.Add(newRoom);
+		var roomName = $"Room {newRoom.id}";
+		_roomsList.AddItem(roomName);
 	}
 
 	private void OnCreateRoom()
 	{
-		string newRoom = $"Room {_roomCounter}";
+		var newRoom = new Room { id = _roomCounter, playerCount = 0, playerLimit = 4 };
 		_roomCounter++;
 
 		AddRoom(newRoom);
@@ -47,7 +54,7 @@ public partial class Hub : Control
 		}
 
 		int index = selected[0];
-		string roomName = _rooms[index];
+		string roomName = _rooms[index].id.ToString();
 
 		GD.Print($"Join room : {roomName}");
 
