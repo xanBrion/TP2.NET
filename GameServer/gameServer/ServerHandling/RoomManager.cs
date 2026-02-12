@@ -82,13 +82,20 @@ namespace gameServer.ServerHandling
             room.RemovePlayer(player.Id);
             Console.WriteLine($"[RoomManager] Player {player.Id} : Disconnected from room {room.Id}");
 
+            bool shouldRemoveRoom = false;
             lock (_roomsLock)
             {
                 if (room.ParticipantCount == 0)
                 {
                     _roomsById.Remove(room.Id);
-                    Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");
+                    shouldRemoveRoom = true;
                 }
+            }
+
+            if (shouldRemoveRoom)
+            {
+                room.Stop();
+                Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");
             }
         }
 
@@ -111,13 +118,20 @@ namespace gameServer.ServerHandling
             room.RemoveObserver(observer.Id);
             Console.WriteLine($"[RoomManager] Observer {observer.Id} : Disconnected from room {room.Id}");
 
+            bool shouldRemoveRoom = false;
             lock (_roomsLock)
             {
                 if (room.ParticipantCount == 0)
                 {
                     _roomsById.Remove(room.Id);
-                    Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");
+                    shouldRemoveRoom = true;
                 }
+            }
+
+            if (shouldRemoveRoom)
+            {
+                room.Stop();
+                Console.WriteLine($"[RoomManager] Room {room.Id} : Deleted (empty)");
             }
         }
     }

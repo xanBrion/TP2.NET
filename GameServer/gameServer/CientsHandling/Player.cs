@@ -17,7 +17,10 @@ namespace gameServer.ClientsHandling
 
         public int Id { get; }
         public string Pseudo { get; set; } = "";
-        public bool Ready { get; set; }
+        public float PositionX { get; set; }
+        public float PositionY { get; set; }
+        public bool IsAlive { get; set; } = true;
+        public bool IsReady { get; set; }
         public TcpClient Client { get; }
         public NetworkStream Stream { get; }
 

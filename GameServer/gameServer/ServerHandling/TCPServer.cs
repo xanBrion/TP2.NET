@@ -122,7 +122,8 @@ namespace gameServer.ServerHandling
 
                 observer.Disconnected += _ => HandleObserverDisconnected(observer, observedRoom);
                 observer.SendMessage<IServerMessage>(new ObserverJoined { RoomId = observedRoom.Id });
-                observer.SendMessage<IServerMessage>(observedRoom.BuildSnapshot());
+                observer.SendMessage<IServerMessage>(
+                    observedRoom.BuildWorldStateSnapshot(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
                 Console.WriteLine($"[TCPServer] Observer {observer.Id} : Watching room {observedRoom.Id}");
 
                 while (!cancellationToken.IsCancellationRequested)

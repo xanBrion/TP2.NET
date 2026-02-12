@@ -1,5 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using gameServer.ClientsHandling;
 using gameServer.GameHandling;
 
@@ -7,13 +11,17 @@ namespace gameServer.ServerHandling
 {
     internal class Room
     {
-        private const int MinPlayersToStart = 2;
         private const int MaxPlayers = 10;
+        private const int TickIntervalMs = 50;
+        private const int SyncIntervalMs = 1000;
+
         private readonly Dictionary<int, Player> _playersById = new Dictionary<int, Player>();
         private readonly Dictionary<int, Observer> _observersById = new Dictionary<int, Observer>();
         private readonly object _playersLock = new object();
-        private string _lastKnownState = "empty";
+
         private Game? _game;
+        private CancellationTokenSource? _gameLoopCts;
+        private Task? _gameLoopTask;
 
         public int Id { get; }
 
@@ -77,8 +85,16 @@ namespace gameServer.ServerHandling
                     return false;
                 }
 
-                player.Ready = false;
+                player.PositionX = 0.0f;
+                player.PositionY = 0.0f;
+                player.IsAlive = true;
+                player.IsReady = false;
                 _playersById.Add(player.Id, player);
+
+                _game ??= new Game(Id);
+                _game.AddPlayer(player);
+                Console.WriteLine($"[Room] {Id} : Player {player.Id} joined.");
+                EnsureGameLoopStarted_NoLock();
                 return true;
             }
         }
@@ -88,6 +104,7 @@ namespace gameServer.ServerHandling
             lock (_playersLock)
             {
                 _playersById.Remove(playerId);
+                _game?.RemovePlayer(playerId);
             }
         }
 
@@ -101,6 +118,7 @@ namespace gameServer.ServerHandling
                 }
 
                 _observersById.Add(observer.Id, observer);
+                EnsureGameLoopStarted_NoLock();
                 return true;
             }
         }
@@ -113,119 +131,335 @@ namespace gameServer.ServerHandling
             }
         }
 
-        public GameStateSnapshot BuildSnapshot()
+        public WorldStateUpdate BuildWorldStateSnapshot(long serverTimeMs)
         {
             lock (_playersLock)
             {
-                return new GameStateSnapshot
+                if (_game == null)
                 {
-                    RoomId = Id,
-                    State = _lastKnownState
-                };
+                    return new WorldStateUpdate
+                    {
+                        RoomId = Id,
+                        ServerTimeMs = serverTimeMs
+                    };
+                }
+
+                var snapshot = _game.BuildSnapshot();
+                return BuildWorldUpdateFromTick(snapshot, serverTimeMs);
             }
         }
 
         public void HandleMessage(Player player, IClientMessage message)
         {
-            // Handle player ready/unready updates.
-            if (message is PlayerReadyUpdate readyUpdate)
+            switch (message)
             {
-                List<Player> players;
-                List<Observer> observers;
-                bool shouldStart;
-
-                // Update ready state and evaluate game start under lock.
-                lock (_playersLock)
-                {
-                    // Ignore messages from players not in this room anymore.
-                    if (!_playersById.ContainsKey(player.Id))
+                case PlayerReadyUpdate readyUpdate:
+                    lock (_playersLock)
                     {
-                        return;
+                        if (_playersById.TryGetValue(player.Id, out var readyPlayer))
+                        {
+                            readyPlayer.IsReady = readyUpdate.IsReady;
+                            Console.WriteLine(
+                                $"[Room] {Id} : Player {readyPlayer.Id} ready = {readyPlayer.IsReady}");
+                        }
                     }
+                    break;
 
-                    // Update sender ready flag and snapshot current participants.
-                    player.Ready = readyUpdate.Ready;
-                    players = _playersById.Values.ToList();
-                    observers = _observersById.Values.ToList();
-                    // Start only once, with enough players, and everyone ready.
-                    shouldStart = _game == null
-                        && players.Count >= MinPlayersToStart
-                        && players.All(p => p.Ready);
-
-                    if (shouldStart)
+                case PlayerPositionUpdate positionUpdate:
+                    lock (_playersLock)
                     {
-                        _game = new Game(Id);
-                        _lastKnownState = "started";
+                        if (_game == null || !_playersById.TryGetValue(player.Id, out var trackedPlayer))
+                        {
+                            return;
+                        }
+
+                        if (!trackedPlayer.IsAlive || !AllPlayersReady_NoLock())
+                        {
+                            return;
+                        }
+
+                        trackedPlayer.PositionX = positionUpdate.X;
+                        trackedPlayer.PositionY = positionUpdate.Y;
+                        _game.UpdatePlayerPosition(trackedPlayer.Id, positionUpdate.X, positionUpdate.Y);
                     }
-                }
+                    break;
+            }
+        }
 
-                // Notify players/observers about the sender ready state change.
-                var readyChanged = new PlayerReadyChanged
-                {
-                    RoomId = Id,
-                    PlayerId = player.Id,
-                    Ready = player.Ready
-                };
+        public void Stop()
+        {
+            CancellationTokenSource? cts;
+            lock (_playersLock)
+            {
+                cts = _gameLoopCts;
+                _gameLoopCts = null;
+                _gameLoopTask = null;
+            }
 
-                foreach (var roomPlayer in players)
-                {
-                    roomPlayer.SendMessage<IServerMessage>(readyChanged);
-                }
+            cts?.Cancel();
+            cts?.Dispose();
+        }
 
-                foreach (var observer in observers)
-                {
-                    observer.SendMessage<IServerMessage>(readyChanged);
-                }
-
-                // If game just started, broadcast the start event + snapshot.
-                if (shouldStart)
-                {
-                    System.Console.WriteLine($"[Room] {Id} : Game started ({players.Count} players ready)");
-                    var gameStarted = new GameStarted { RoomId = Id };
-                    var snapshot = new GameStateSnapshot
-                    {
-                        RoomId = Id,
-                        State = _lastKnownState
-                    };
-
-                    foreach (var roomPlayer in players)
-                    {
-                        roomPlayer.SendMessage<IServerMessage>(gameStarted);
-                        roomPlayer.SendMessage<IServerMessage>(snapshot);
-                    }
-
-                    foreach (var observer in observers)
-                    {
-                        observer.SendMessage<IServerMessage>(gameStarted);
-                        observer.SendMessage<IServerMessage>(snapshot);
-                    }
-                }
-
+        private void EnsureGameLoopStarted_NoLock()
+        {
+            if (_gameLoopTask != null)
+            {
                 return;
             }
 
-            // Handle player moves by updating room state and notifying observers.
-            if (message is PlayerDisplacement move)
+            _gameLoopCts = new CancellationTokenSource();
+            _gameLoopTask = Task.Run(() => RunGameLoopAsync(_gameLoopCts.Token));
+        }
+
+        private async Task RunGameLoopAsync(CancellationToken cancellationToken)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            long previousStepMs = stopwatch.ElapsedMilliseconds;
+            long lastSyncSentMs = 0;
+            bool matchFinishedNotified = false;
+            var defeatedNotifiedIds = new HashSet<int>();
+            int lastReadyPlayers = -1;
+            int lastTotalPlayers = -1;
+            bool lastAllReady = false;
+            bool lastCanStart = false;
+
+            try
             {
-                List<Observer> observers;
-                // Update state under lock and copy observer list for sending outside lock.
-                lock (_playersLock)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    _lastKnownState = move.Payload;
-                    observers = _observersById.Values.ToList();
-                }
+                    long nowStepMs = stopwatch.ElapsedMilliseconds;
+                    float deltaSeconds = Math.Max(0.0f, (nowStepMs - previousStepMs) / 1000.0f);
+                    previousStepMs = nowStepMs;
+                    long serverTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-                var snapshot = new GameStateSnapshot
-                {
-                    RoomId = Id,
-                    State = _lastKnownState
-                };
+                    GameTickResult? tick = null;
+                    List<Player>? players = null;
+                    List<Observer>? observers = null;
+                    int readyPlayers = 0;
+                    int totalPlayers = 0;
+                    bool allReady = false;
+                    bool canStart = false;
 
-                foreach (var observer in observers)
-                {
-                    observer.SendMessage<IServerMessage>(snapshot);
+                    lock (_playersLock)
+                    {
+                        if (_game == null)
+                        {
+                            break;
+                        }
+
+                        if (_playersById.Count == 0 && _observersById.Count == 0)
+                        {
+                            break;
+                        }
+
+                        totalPlayers = _playersById.Count;
+                        readyPlayers = _playersById.Values.Count(p => p.IsReady);
+                        allReady = totalPlayers > 0 && readyPlayers == totalPlayers;
+                        canStart = totalPlayers >= 2 && allReady;
+
+                        tick = canStart ? _game.Tick(deltaSeconds) : _game.BuildSnapshot();
+
+                        foreach (var state in tick.PlayerStates)
+                        {
+                            if (_playersById.TryGetValue(state.PlayerId, out var connected))
+                            {
+                                connected.PositionX = state.X;
+                                connected.PositionY = state.Y;
+                                connected.IsAlive = state.IsAlive;
+                                connected.IsReady = state.IsReady;
+                            }
+                        }
+
+                        players = _playersById.Values.ToList();
+                        observers = _observersById.Values.ToList();
+                    }
+
+                    if (tick == null || players == null || observers == null)
+                    {
+                        break;
+                    }
+
+                    var playersById = players.ToDictionary(p => p.Id);
+                    if (readyPlayers != lastReadyPlayers
+                        || totalPlayers != lastTotalPlayers
+                        || allReady != lastAllReady
+                        || canStart != lastCanStart)
+                    {
+                        lastReadyPlayers = readyPlayers;
+                        lastTotalPlayers = totalPlayers;
+                        lastAllReady = allReady;
+                        lastCanStart = canStart;
+                        SendToParticipants(players, observers, new RoomReadinessUpdate
+                        {
+                            RoomId = Id,
+                            ReadyPlayers = readyPlayers,
+                            TotalPlayers = totalPlayers,
+                            AllReady = allReady,
+                            CanStart = canStart
+                        });
+                    }
+
+                    if (serverTimeMs - lastSyncSentMs >= SyncIntervalMs)
+                    {
+                        var sync = new ServerTimeSync
+                        {
+                            RoomId = Id,
+                            ServerTimeMs = serverTimeMs
+                        };
+                        SendToParticipants(players, observers, sync);
+                        lastSyncSentMs = serverTimeMs;
+                    }
+
+                    foreach (var mob in tick.SpawnedMobs)
+                    {
+                        var spawned = new MobSpawned
+                        {
+                            RoomId = Id,
+                            ServerTimeMs = serverTimeMs,
+                            Mob = CloneMobState(mob)
+                        };
+                        SendToParticipants(players, observers, spawned);
+                    }
+
+                    var worldUpdate = BuildWorldUpdateFromTick(tick, serverTimeMs);
+                    SendToParticipants(players, observers, worldUpdate);
+
+                    foreach (int defeatedPlayerId in tick.DefeatedPlayerIds)
+                    {
+                        if (defeatedNotifiedIds.Contains(defeatedPlayerId))
+                        {
+                            continue;
+                        }
+
+                        defeatedNotifiedIds.Add(defeatedPlayerId);
+                        if (playersById.TryGetValue(defeatedPlayerId, out var defeatedPlayer))
+                        {
+                            defeatedPlayer.SendMessage<IServerMessage>(new PlayerOutcome
+                            {
+                                RoomId = Id,
+                                ServerTimeMs = serverTimeMs,
+                                PlayerId = defeatedPlayerId,
+                                Outcome = "defeat"
+                            });
+                        }
+                    }
+
+                    if (tick.MatchFinished && !matchFinishedNotified)
+                    {
+                        matchFinishedNotified = true;
+                        Console.WriteLine($"[Room] {Id} : Match finished. Winner = {tick.WinnerPlayerId}");
+
+                        if (tick.WinnerPlayerId >= 0 && playersById.TryGetValue(tick.WinnerPlayerId, out var winner))
+                        {
+                            winner.SendMessage<IServerMessage>(new PlayerOutcome
+                            {
+                                RoomId = Id,
+                                ServerTimeMs = serverTimeMs,
+                                PlayerId = winner.Id,
+                                Outcome = "victory"
+                            });
+                        }
+
+                        SendToParticipants(players, observers, new MatchFinished
+                        {
+                            RoomId = Id,
+                            ServerTimeMs = serverTimeMs,
+                            WinnerPlayerId = tick.WinnerPlayerId
+                        });
+                    }
+
+                    try
+                    {
+                        await Task.Delay(TickIntervalMs, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
             }
+            finally
+            {
+                CancellationTokenSource? ctsToDispose = null;
+                lock (_playersLock)
+                {
+                    ctsToDispose = _gameLoopCts;
+                    _gameLoopCts = null;
+                    _gameLoopTask = null;
+                }
+
+                ctsToDispose?.Dispose();
+            }
+        }
+
+        private WorldStateUpdate BuildWorldUpdateFromTick(GameTickResult tick, long serverTimeMs)
+        {
+            return new WorldStateUpdate
+            {
+                RoomId = Id,
+                ServerTimeMs = serverTimeMs,
+                Players = tick.PlayerStates.Select(ClonePlayerState).ToList(),
+                Mobs = tick.MobStates.Select(CloneMobState).ToList()
+            };
+        }
+
+        private static PlayerStateData ClonePlayerState(PlayerStateData player)
+        {
+            return new PlayerStateData
+            {
+                PlayerId = player.PlayerId,
+                Pseudo = player.Pseudo,
+                X = player.X,
+                Y = player.Y,
+                IsAlive = player.IsAlive,
+                IsReady = player.IsReady
+            };
+        }
+
+        private static MobStateData CloneMobState(MobStateData mob)
+        {
+            return new MobStateData
+            {
+                MobId = mob.MobId,
+                X = mob.X,
+                Y = mob.Y,
+                Speed = mob.Speed,
+                Angle = mob.Angle,
+                VelocityX = mob.VelocityX,
+                VelocityY = mob.VelocityY
+            };
+        }
+
+        private static void SendToParticipants(
+            IEnumerable<Player> players,
+            IEnumerable<Observer> observers,
+            IServerMessage message)
+        {
+            foreach (var player in players)
+            {
+                TrySend(() => player.SendMessage<IServerMessage>(message));
+            }
+
+            foreach (var observer in observers)
+            {
+                TrySend(() => observer.SendMessage<IServerMessage>(message));
+            }
+        }
+
+        private static void TrySend(Action send)
+        {
+            try
+            {
+                send();
+            }
+            catch
+            {
+            }
+        }
+
+        private bool AllPlayersReady_NoLock()
+        {
+            return _playersById.Count > 0 && _playersById.Values.All(p => p.IsReady);
         }
     }
 }

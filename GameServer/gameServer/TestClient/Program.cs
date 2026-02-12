@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -113,10 +114,10 @@ static async Task RunPlayerModeAsync(MessagePackStreamReader reader, NetworkStre
         else
         {
             Console.WriteLine($"\nGame menu (room {joinedRoomId}):");
-            Console.WriteLine("1) send move");
-            Console.WriteLine("2) set ready");
-            Console.WriteLine("3) set not ready");
-            Console.WriteLine("4) wait for server event");
+            Console.WriteLine("1) set ready");
+            Console.WriteLine("2) set unready");
+            Console.WriteLine("3) send position");
+            Console.WriteLine("4) wait for server update");
             Console.WriteLine("0) quit");
             Console.Write("choice> ");
 
@@ -129,35 +130,43 @@ static async Task RunPlayerModeAsync(MessagePackStreamReader reader, NetworkStre
             switch (input)
             {
                 case "1":
-                case "move":
-                {
-                    Console.Write("payload> ");
-                    var payload = (Console.ReadLine() ?? "").Trim();
-                    SendClientMessage(stream, new PlayerDisplacement { Payload = payload });
-                    Console.WriteLine("Move sent.");
-                    await TryReadAndPrintEventAsync(reader, TimeSpan.FromMilliseconds(300)).ConfigureAwait(false);
-                    break;
-                }
-                case "2":
                 case "ready":
-                {
-                    SendClientMessage(stream, new PlayerReadyUpdate { Ready = true });
-                    Console.WriteLine("Ready sent.");
-                    await TryReadAndPrintEventAsync(reader, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                    SendClientMessage(stream, new PlayerReadyUpdate { IsReady = true });
+                    await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromMilliseconds(300)).ConfigureAwait(false);
                     break;
-                }
-                case "3":
+                case "2":
                 case "unready":
+                    SendClientMessage(stream, new PlayerReadyUpdate { IsReady = false });
+                    await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromMilliseconds(300)).ConfigureAwait(false);
+                    break;
+                case "3":
+                case "position":
                 {
-                    SendClientMessage(stream, new PlayerReadyUpdate { Ready = false });
-                    Console.WriteLine("Not-ready sent.");
-                    await TryReadAndPrintEventAsync(reader, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                    Console.Write("x> ");
+                    var xText = (Console.ReadLine() ?? "").Trim();
+                    Console.Write("y> ");
+                    var yText = (Console.ReadLine() ?? "").Trim();
+
+                    if (!TryParseFloat(xText, out var x) || !TryParseFloat(yText, out var y))
+                    {
+                        Console.WriteLine("Invalid coordinates.");
+                        break;
+                    }
+
+                    SendClientMessage(stream, new PlayerPositionUpdate
+                    {
+                        X = x,
+                        Y = y,
+                        ClientTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    });
+
+                    await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromMilliseconds(300)).ConfigureAwait(false);
                     break;
                 }
                 case "4":
                 case "wait":
                 {
-                    await TryReadAndPrintEventAsync(reader, TimeSpan.FromSeconds(60)).ConfigureAwait(false);
+                    await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                     break;
                 }
                 default:
@@ -195,16 +204,12 @@ static async Task RunObserverModeAsync(MessagePackStreamReader reader, NetworkSt
 
     Console.WriteLine($"Observing room {joined.RoomId}.");
 
-    var initialSnapshot = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-    if (initialSnapshot is GameStateSnapshot initialState)
-    {
-        Console.WriteLine($"Current state: {initialState.State}");
-    }
+    await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 
     while (true)
     {
         Console.WriteLine("\nObserver menu:");
-        Console.WriteLine("1) wait for next state update");
+        Console.WriteLine("1) wait for next update");
         Console.WriteLine("0) quit");
         Console.Write("choice> ");
 
@@ -214,44 +219,7 @@ static async Task RunObserverModeAsync(MessagePackStreamReader reader, NetworkSt
             break;
         }
 
-        if (input != "1" && input != "wait")
-        {
-            Console.WriteLine("Unknown choice.");
-            continue;
-        }
-
-        var response = await ReadMessageAsync<IServerMessage>(reader, TimeSpan.FromSeconds(60)).ConfigureAwait(false);
-        if (response == null)
-        {
-            Console.WriteLine("No update within timeout.");
-            continue;
-        }
-
-        if (response is GameStateSnapshot snapshot)
-        {
-            Console.WriteLine($"State update (room {snapshot.RoomId}): {snapshot.State}");
-            continue;
-        }
-
-        if (response is PlayerReadyChanged readyChanged)
-        {
-            Console.WriteLine($"Ready changed (room {readyChanged.RoomId}): player {readyChanged.PlayerId} = {readyChanged.Ready}");
-            continue;
-        }
-
-        if (response is GameStarted started)
-        {
-            Console.WriteLine($"Game started in room {started.RoomId}");
-            continue;
-        }
-
-        if (response is ErrorResponse updateError)
-        {
-            Console.WriteLine($"Server error: {updateError.Code}");
-            continue;
-        }
-
-        Console.WriteLine($"Received: {response.GetType().Name}");
+        await TryReadAndPrintServerEventAsync(reader, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
     }
 }
 
@@ -301,7 +269,7 @@ static async Task<(bool success, int roomId)> WaitForJoinAsync(MessagePackStream
     }
 }
 
-static async Task TryReadAndPrintEventAsync(MessagePackStreamReader reader, TimeSpan timeout)
+static async Task TryReadAndPrintServerEventAsync(MessagePackStreamReader reader, TimeSpan timeout)
 {
     var response = await ReadMessageAsync<IServerMessage>(reader, timeout).ConfigureAwait(false);
     if (response == null)
@@ -310,31 +278,36 @@ static async Task TryReadAndPrintEventAsync(MessagePackStreamReader reader, Time
         return;
     }
 
-    if (response is PlayerReadyChanged readyChanged)
+    switch (response)
     {
-        Console.WriteLine($"Ready changed (room {readyChanged.RoomId}): player {readyChanged.PlayerId} = {readyChanged.Ready}");
-        return;
+        case WorldStateUpdate world:
+            Console.WriteLine(
+                $"World t={world.ServerTimeMs} room={world.RoomId} players={world.Players.Count} mobs={world.Mobs.Count}");
+            break;
+        case MobSpawned spawned:
+            Console.WriteLine(
+                $"Mob spawned id={spawned.Mob.MobId} x={spawned.Mob.X:F1} y={spawned.Mob.Y:F1} v=({spawned.Mob.VelocityX:F1},{spawned.Mob.VelocityY:F1})");
+            break;
+        case ServerTimeSync sync:
+            Console.WriteLine($"Server time sync room={sync.RoomId} t={sync.ServerTimeMs}");
+            break;
+        case RoomReadinessUpdate readiness:
+            Console.WriteLine(
+                $"Ready room={readiness.RoomId} ready={readiness.ReadyPlayers}/{readiness.TotalPlayers} allReady={readiness.AllReady} canStart={readiness.CanStart}");
+            break;
+        case PlayerOutcome outcome:
+            Console.WriteLine($"Outcome room={outcome.RoomId} player={outcome.PlayerId} -> {outcome.Outcome}");
+            break;
+        case MatchFinished finished:
+            Console.WriteLine($"Match finished room={finished.RoomId} winner={finished.WinnerPlayerId}");
+            break;
+        case ErrorResponse error:
+            Console.WriteLine($"Server error: {error.Code}");
+            break;
+        default:
+            Console.WriteLine($"Received: {response.GetType().Name}");
+            break;
     }
-
-    if (response is GameStarted started)
-    {
-        Console.WriteLine($"Game started in room {started.RoomId}");
-        return;
-    }
-
-    if (response is GameStateSnapshot snapshot)
-    {
-        Console.WriteLine($"State update (room {snapshot.RoomId}): {snapshot.State}");
-        return;
-    }
-
-    if (response is ErrorResponse error)
-    {
-        Console.WriteLine($"Server error: {error.Code}");
-        return;
-    }
-
-    Console.WriteLine($"Received: {response.GetType().Name}");
 }
 
 static void SendClientMessage(NetworkStream stream, IClientMessage message)
@@ -362,4 +335,14 @@ static async Task<T?> ReadMessageAsync<T>(
     {
         return null;
     }
+}
+
+static bool TryParseFloat(string text, out float value)
+{
+    if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+    {
+        return true;
+    }
+
+    return float.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
 }
