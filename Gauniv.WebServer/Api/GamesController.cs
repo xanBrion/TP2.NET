@@ -80,9 +80,9 @@ public class GamesController : ControllerBase
             query = query.Where(g => g.Categories.Any(c => categoryIds.Contains(c.Id)));
 
         if (minSize.HasValue)
-            query = query.Where(g => g.Payload.Length >= minSize.Value);
+            query = query.Where(g => g.PayloadSize >= minSize.Value);
         if (maxSize.HasValue)
-            query = query.Where(g => g.Payload.Length <= maxSize.Value);
+            query = query.Where(g => g.PayloadSize <= maxSize.Value);
 
         var games = await query.ToListAsync();
 
@@ -151,17 +151,17 @@ public class GamesController : ControllerBase
 
     [HttpPost]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Add([FromBody] GameDto dto)
+    public async Task<IActionResult> Add([FromBody] CreateGameDto dto)
     {
         var game = new Game
         {
             Name = dto.Name,
             Description = dto.Description,
             Price = dto.Price,
-            Payload = dto.Payload,
+            PayloadSize = dto.PayloadSize,
             Categories = await db.Categories
-                                 .Where(c => dto.Categories.Contains(c.Name))
-                                 .ToListAsync()
+                                .Where(c => dto.Categories.Contains(c.Name))
+                                .ToListAsync()
         };
 
         db.Games.Add(game);
@@ -173,7 +173,7 @@ public class GamesController : ControllerBase
             Name = game.Name,
             Description = game.Description,
             Price = game.Price,
-            Payload = game.Payload,
+            PayloadSize = game.PayloadSize,
             Categories = game.Categories.Select(c => c.Name).ToList(),
             Owned = false
         });
@@ -181,7 +181,7 @@ public class GamesController : ControllerBase
 
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Update(int id, [FromBody] GameDto dto)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateGameDto dto)
     {
         var game = await db.Games
             .Include(g => g.Categories)
@@ -189,24 +189,30 @@ public class GamesController : ControllerBase
 
         if (game == null) return NotFound();
 
-        game.Name = dto.Name ?? game.Name;
-        game.Description = dto.Description ?? game.Description;
-        game.Price = dto.Price != 0 ? dto.Price : game.Price;
-        game.Payload = dto.Payload ?? game.Payload;
+        if (!string.IsNullOrWhiteSpace(dto.Name))
+            game.Name = dto.Name;
 
-        if (dto.Categories != null && dto.Categories.Any())
+        if (!string.IsNullOrWhiteSpace(dto.Description))
+            game.Description = dto.Description;
+
+        if (dto.Price.HasValue)
+            game.Price = dto.Price.Value;
+
+        if (dto.PayloadSize.HasValue)
+            game.PayloadSize = dto.PayloadSize.Value;
+
+        if (dto.Categories != null)
         {
             var categories = new List<Category>();
+
             foreach (var catName in dto.Categories)
             {
-                var category = await db.Categories.FirstOrDefaultAsync(c => c.Name == catName);
-                if (category == null)
-                {
-                    category = new Category { Name = catName };
-                    db.Categories.Add(category);
-                }
+                var category = await db.Categories.FirstOrDefaultAsync(c => c.Name == catName)
+                            ?? new Category { Name = catName };
+
                 categories.Add(category);
             }
+
             game.Categories = categories;
         }
 
@@ -214,11 +220,10 @@ public class GamesController : ControllerBase
 
         return Ok(new GameDto
         {
-            Id = game.Id,
             Name = game.Name,
             Description = game.Description,
             Price = game.Price,
-            Payload = game.Payload,
+            PayloadSize = game.PayloadSize,
             Categories = game.Categories.Select(c => c.Name).ToList(),
             Owned = false
         });
@@ -235,4 +240,16 @@ public class GamesController : ControllerBase
         await db.SaveChangesAsync();
         return Ok();
     }
+
+    [HttpGet("{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> Download(int id)
+    {
+        var game = await db.Games.FindAsync(id);
+        if (game == null) return NotFound();
+
+        var stream = System.IO.File.OpenRead(game.PayloadPath);
+        return File(stream, "application/octet-stream", $"{game.Name}.zip");
+    }
+
 }

@@ -27,73 +27,72 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using Gauniv.WebServer.Data;
-using Gauniv.WebServer.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using MapsterMapper;
-using Mapster;
 using Microsoft.EntityFrameworkCore;
+using Gauniv.WebServer.Dtos;
+using Gauniv.WebServer.Websocket;
 
 [Route("api/1.0.0/[controller]/[action]")]
 [ApiController]
-public class CategoriesController : ControllerBase
+public class StatsController : ControllerBase
 {
     private readonly ApplicationDbContext db;
     private readonly IMapper mapper;
+    private readonly UserManager<User> userManager;
 
-    public CategoriesController(ApplicationDbContext db, IMapper mapper)
+    public StatsController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
     {
         this.db = db;
         this.mapper = mapper;
+        this.userManager = userManager;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllCategories()
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> TotalGames()
     {
-        var categories = await db.Categories.Include(c => c.Games).ToListAsync();
-        var dto = mapper.Map<List<CategoryDto>>(categories);
-        return Ok(dto);
+        var total = await db.Games.CountAsync();
+        return Ok(total);
     }
 
-    [HttpPost]
+    [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Add([FromBody] string name)
+    public async Task<IActionResult> GamesPerCategory()
     {
-        var category = new Category { Name = name };
-        db.Categories.Add(category);
-        await db.SaveChangesAsync();
-        return Ok(category);
+        var stats = await db.Categories
+            .Select(c => new { c.Name, Count = c.Games.Count })
+            .ToListAsync();
+        return Ok(stats);
     }
 
-    [HttpPut("{id:int}")]
+    [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateCategoryDto dto)
+    public async Task<IActionResult> AvgGamesPerUser()
     {
-        var category = await db.Categories.FindAsync(id);
-        if (category == null)
-            return NotFound();
-
-        if (!string.IsNullOrWhiteSpace(dto.Name))
-            category.Name = dto.Name;
-
-        await db.SaveChangesAsync();
-
-        return Ok(new CategoryDto
-        {
-            Id = category.Id,
-            Name = category.Name
-        });
+        var avg = await db.Users
+            .Select(u => u.PurchasedGames.Count)
+            .DefaultIfEmpty(0)
+            .AverageAsync();
+        return Ok(avg);
     }
 
-    [HttpDelete("{id:int}")]
+    [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Delete(int id)
+    public IActionResult MaxSimultaneousPlayers()
     {
-        var category = await db.Categories.FindAsync(id);
-        if (category == null) return NotFound();
+        return Ok(OnlineHub.ConnectedUsers.Count);
+    }
 
-        db.Categories.Remove(category);
-        await db.SaveChangesAsync();
-        return Ok();
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> MaxPlayersPerGame()
+    {
+        var stats = await db.Games
+            .Select(g => new { g.Name, MaxPlayers = g.PurchasedByUsers.Count })
+            .ToListAsync();
+        return Ok(stats);
     }
 }
