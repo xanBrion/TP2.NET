@@ -17,6 +17,8 @@ public partial class Hub : Control
 	private ItemList _roomsList;
 	private Button _createButton;
 	private Button _joinButton;
+	private Button _quikJoinButton;
+	private Button _refreshButton;
 
 	private GameServerNetworkClient _networkClient;
 	private bool _connected;
@@ -31,6 +33,8 @@ public partial class Hub : Control
 		_roomsList = GetNode<ItemList>("RoomsList");
 		_createButton = GetNode<Button>("Create");
 		_joinButton = GetNode<Button>("Join");
+		_quikJoinButton = GetNode<Button>("QuickJoin");
+		_refreshButton = GetNode<Button>("Refresh");
 		_roomsList.Clear();
 		_roomsList.AddItem("Connecting to server...");
 		_ = ConnectAndStartRefreshAsync();
@@ -184,6 +188,26 @@ public partial class Hub : Control
 		ChangeToGameScene();
 	}
 
+	private void OnQuickJoinRoom()
+	{
+		if (_rooms.Count == 0)
+		{
+			GD.Print("No rooms available");
+			return;
+		}
+
+		foreach (LobbyInfo room in _rooms)
+		{
+			if (room.PlayerCount < room.Capacity)
+			{
+				GameLaunchContext.CreateRoomRequested = false;
+				GameLaunchContext.PreferredRoomId = room.Id;
+				ChangeToGameScene();
+				return;
+			}
+		}
+	}
+
 	private void OnQuit()
 	{
 		GetTree().Quit();
@@ -196,5 +220,10 @@ public partial class Hub : Control
 		{
 			GD.PrintErr($"Error to load game scene: {err}");
 		}
+	}
+
+	private void OnRefresh()
+	{
+
 	}
 }

@@ -48,6 +48,23 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 
+[node name="Refresh" type="Button" parent="." unique_id=635966413]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = 421.0
+offset_top = -496.0
+offset_right = 561.0
+offset_bottom = -449.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Refresh"
+
 [node name="RoomsList" type="ItemList" parent="." unique_id=693239450]
 layout_mode = 1
 anchors_preset = 8
@@ -88,14 +105,31 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -41.0
-offset_top = -164.0
+offset_top = -127.0
 offset_right = 41.0
-offset_bottom = -117.0
+offset_bottom = -80.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_fonts/font = ExtResource("2_fvavt")
 theme_override_font_sizes/font_size = 32
 text = "Join"
+
+[node name="QuickJoin" type="Button" parent="." unique_id=2068130263]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -85.0
+offset_top = -184.0
+offset_right = 85.0
+offset_bottom = -137.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Quick join"
 
 [node name="Quit" type="Button" parent="." unique_id=1364839101]
 layout_mode = 1
@@ -105,9 +139,9 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -38.5
-offset_top = -93.0
+offset_top = -71.0
 offset_right = 38.5
-offset_bottom = -46.0
+offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_fonts/font = ExtResource("2_fvavt")
@@ -116,4 +150,5 @@ text = "Quit"
 
 [connection signal="pressed" from="Create" to="." method="OnCreateRoom"]
 [connection signal="pressed" from="Join" to="." method="OnJoinRoom"]
+[connection signal="pressed" from="QuickJoin" to="." method="OnQuickJoinRoom"]
 [connection signal="pressed" from="Quit" to="." method="OnQuit"]
