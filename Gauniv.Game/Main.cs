@@ -1,29 +1,62 @@
 using Godot;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 public partial class Main : Node
 {
-	// Don't forget to rebuild the project so the editor knows about the new export variable.
-
 	[Export]
 	public PackedScene MobScene { get; set; }
 
-	private int _score;
+	[Export]
+	public bool UseServerNetworking { get; set; } = true;
 
-	// Called when the node enters the scene tree for the first time.
+	[Export]
+	public string ServerHost { get; set; } = "127.0.0.1";
+
+	[Export]
+	public int ServerPort { get; set; } = 13000;
+
+	private int _score;
+	private string _pseudo = string.Empty;
+	private int _currentRoomId = -1;
+	private int _localPlayerId = -1;
+	private bool _serverMatchStarted;
+	private long _lastPositionSentMs;
+
+	private GameServerNetworkClient? _networkClient;
+
+	private readonly object _incomingLock = new object();
+	private readonly Queue<IServerMessage> _incomingMessages = new Queue<IServerMessage>();
+	private readonly Dictionary<int, Mob> _serverMobsById = new Dictionary<int, Mob>();
+
 	public override void _Ready()
 	{
-
+		if (UseServerNetworking)
+		{
+			StartServerSession();
+		}
 	}
 
-	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
 	{
+		if (!UseServerNetworking)
+		{
+			return;
+		}
 
+		DrainServerMessages();
+		SendLocalPositionToServer();
+	}
+
+	public override void _ExitTree()
+	{
+		_networkClient?.Dispose();
+		_networkClient = null;
 	}
 
 	public void GameOver()
-	{	
+	{
 		GetNode<Timer>("MobTimer").Stop();
 		GetNode<Timer>("ScoreTimer").Stop();
 		GetNode<Hud>("HUD").ShowGameOver();
@@ -34,6 +67,19 @@ public partial class Main : Node
 
 	public void NewGame()
 	{
+		if (UseServerNetworking)
+		{
+			if (_networkClient == null || !_networkClient.IsConnected)
+			{
+				GD.PrintErr("[Network] Not connected to game server.");
+				return;
+			}
+
+			GetNode<Hud>("HUD").ShowMessage("Ready sent");
+			_ = _networkClient.SetReadyAsync(true);
+			return;
+		}
+
 		_score = 0;
 
 		var hud = GetNode<Hud>("HUD");
@@ -44,54 +90,275 @@ public partial class Main : Node
 		var startPosition = GetNode<Marker2D>("StartPosition");
 		player.Start(startPosition.Position);
 
-		// Note that for calling Godot-provided methods with strings,
-		// we have to use the original Godot snake_case name.
 		GetTree().CallGroup("mobs", Node.MethodName.QueueFree);
 
 		GetNode<Timer>("StartTimer").Start();
-
 		GetNode<AudioStreamPlayer>("Music").Play();
 	}
 
-	// We also specified this function name in PascalCase in the editor's connection window.
 	private void OnScoreTimerTimeout()
 	{
+		if (UseServerNetworking)
+		{
+			return;
+		}
+
 		_score++;
 		GetNode<Hud>("HUD").UpdateScore(_score);
 	}
 
-	// We also specified this function name in PascalCase in the editor's connection window.
 	private void OnStartTimerTimeout()
 	{
+		if (UseServerNetworking)
+		{
+			return;
+		}
+
 		GetNode<Timer>("MobTimer").Start();
 		GetNode<Timer>("ScoreTimer").Start();
 	}
 
-	// We also specified this function name in PascalCase in the editor's connection window.
 	private void OnMobTimerTimeout()
 	{
-		// Create a new instance of the Mob scene.
+		if (UseServerNetworking)
+		{
+			return;
+		}
+
 		Mob mob = MobScene.Instantiate<Mob>();
 
-		// Choose a random location on Path2D.
 		var mobSpawnLocation = GetNode<PathFollow2D>("MobPath/MobSpawnLocation");
 		mobSpawnLocation.ProgressRatio = GD.Randf();
 
-		// Set the mob's direction perpendicular to the path direction.
 		float direction = mobSpawnLocation.Rotation + Mathf.Pi / 2;
-
-		// Set the mob's position to a random location.
 		mob.Position = mobSpawnLocation.Position;
-
-		// Add some randomness to the direction.
 		direction += (float)GD.RandRange(-Mathf.Pi / 4, Mathf.Pi / 4);
 		mob.Rotation = direction;
 
-		// Choose the velocity.
 		var velocity = new Vector2((float)GD.RandRange(150.0, 250.0), 0);
 		mob.LinearVelocity = velocity.Rotated(direction);
 
-		// Spawn the mob by adding it to the Main scene.
 		AddChild(mob);
+	}
+
+	private async void StartServerSession()
+	{
+		_pseudo = $"Godot_{(int)(GD.Randi() % 10000)}";
+		_networkClient = new GameServerNetworkClient();
+		_networkClient.ServerMessageReceived += OnServerMessageReceived;
+		_networkClient.ErrorOccurred += message => GD.PrintErr($"[Network] {message}");
+
+		try
+		{
+			await _networkClient.ConnectAsPlayerAsync(ServerHost, ServerPort, _pseudo).ConfigureAwait(false);
+			await _networkClient.RequestLobbyListAsync().ConfigureAwait(false);
+			await _networkClient.QuickJoinAsync().ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[Network] Connection failed: {ex.Message}");
+		}
+	}
+
+	private void OnServerMessageReceived(IServerMessage message)
+	{
+		lock (_incomingLock)
+		{
+			_incomingMessages.Enqueue(message);
+		}
+	}
+
+	private void DrainServerMessages()
+	{
+		while (true)
+		{
+			IServerMessage? message = null;
+			lock (_incomingLock)
+			{
+				if (_incomingMessages.Count == 0)
+				{
+					break;
+				}
+
+				message = _incomingMessages.Dequeue();
+			}
+
+			if (message != null)
+			{
+				HandleServerMessage(message);
+			}
+		}
+	}
+
+	private void HandleServerMessage(IServerMessage message)
+	{
+		switch (message)
+		{
+			case LobbyListResponse lobbies:
+				GD.Print($"[Network] Lobbies found: {lobbies.Lobbies.Count}");
+				break;
+
+			case LobbyJoined joined:
+				_currentRoomId = joined.RoomId;
+				GetNode<Hud>("HUD").ShowMessage($"Joined room {_currentRoomId}. Press Start to ready.");
+				break;
+
+			case RoomReadinessUpdate readiness:
+				if (readiness.RoomId != _currentRoomId)
+				{
+					return;
+				}
+
+				GetNode<Hud>("HUD").ShowMessage($"Ready {readiness.ReadyPlayers}/{readiness.TotalPlayers}");
+				if (readiness.CanStart && !_serverMatchStarted)
+				{
+					StartServerDrivenMatch();
+				}
+				break;
+
+			case WorldStateUpdate world:
+				if (world.RoomId == _currentRoomId)
+				{
+					ApplyWorldState(world);
+				}
+				break;
+
+			case PlayerOutcome outcome:
+				if (outcome.PlayerId == _localPlayerId && outcome.Outcome == "defeat")
+				{
+					GameOver();
+				}
+				if (outcome.PlayerId == _localPlayerId && outcome.Outcome == "victory")
+				{
+					GetNode<Hud>("HUD").ShowMessage("Victory");
+				}
+				break;
+
+			case MatchFinished finished:
+				GetNode<Hud>("HUD").ShowMessage($"Match finished. Winner: {finished.WinnerPlayerId}");
+				break;
+
+			case ErrorResponse error:
+				GD.PrintErr($"[Network] Server error: {error.Code}");
+				break;
+		}
+	}
+
+	private void StartServerDrivenMatch()
+	{
+		_serverMatchStarted = true;
+		_score = 0;
+		GetNode<Hud>("HUD").UpdateScore(_score);
+
+		var player = GetNode<Player>("Player");
+		var startPosition = GetNode<Marker2D>("StartPosition");
+		player.Start(startPosition.Position);
+
+		ClearServerMobs();
+		GetTree().CallGroup("mobs", Node.MethodName.QueueFree);
+
+		GetNode<Timer>("MobTimer").Stop();
+		GetNode<Timer>("ScoreTimer").Stop();
+		GetNode<Timer>("StartTimer").Stop();
+	}
+
+	private void ApplyWorldState(WorldStateUpdate world)
+	{
+		if (_networkClient == null)
+		{
+			return;
+		}
+
+		if (_localPlayerId <= 0)
+		{
+			var meByPseudo = world.Players.FirstOrDefault(p => p.Pseudo == _networkClient.Pseudo);
+			if (meByPseudo != null)
+			{
+				_localPlayerId = meByPseudo.PlayerId;
+			}
+		}
+
+		if (_localPlayerId > 0)
+		{
+			var me = world.Players.FirstOrDefault(p => p.PlayerId == _localPlayerId);
+			if (me != null)
+			{
+				var player = GetNode<Player>("Player");
+				if (!player.Visible)
+				{
+					player.Start(new Vector2(me.X, me.Y));
+				}
+
+				player.Position = new Vector2(me.X, me.Y);
+				if (!me.IsAlive)
+				{
+					GameOver();
+				}
+			}
+		}
+
+		var presentMobIds = new HashSet<int>();
+		foreach (var mobState in world.Mobs)
+		{
+			presentMobIds.Add(mobState.MobId);
+			if (!_serverMobsById.TryGetValue(mobState.MobId, out var mob) || !IsInstanceValid(mob))
+			{
+				mob = MobScene.Instantiate<Mob>();
+				mob.Freeze = true;
+				AddChild(mob);
+				_serverMobsById[mobState.MobId] = mob;
+			}
+
+			mob.Position = new Vector2(mobState.X, mobState.Y);
+			mob.Rotation = mobState.Angle;
+			mob.LinearVelocity = new Vector2(mobState.VelocityX, mobState.VelocityY);
+		}
+
+		var staleMobIds = _serverMobsById.Keys.Where(id => !presentMobIds.Contains(id)).ToList();
+		foreach (var staleId in staleMobIds)
+		{
+			if (_serverMobsById.TryGetValue(staleId, out var staleMob) && IsInstanceValid(staleMob))
+			{
+				staleMob.QueueFree();
+			}
+
+			_serverMobsById.Remove(staleId);
+		}
+	}
+
+	private void SendLocalPositionToServer()
+	{
+		if (!_serverMatchStarted || _networkClient == null || !_networkClient.IsConnected)
+		{
+			return;
+		}
+
+		long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+		if (now - _lastPositionSentMs < 50)
+		{
+			return;
+		}
+
+		_lastPositionSentMs = now;
+		var player = GetNode<Player>("Player");
+		if (!player.Visible)
+		{
+			return;
+		}
+
+		_ = _networkClient.SendPositionAsync(player.Position.X, player.Position.Y);
+	}
+
+	private void ClearServerMobs()
+	{
+		foreach (var mob in _serverMobsById.Values)
+		{
+			if (IsInstanceValid(mob))
+			{
+				mob.QueueFree();
+			}
+		}
+
+		_serverMobsById.Clear();
 	}
 }
