@@ -152,7 +152,24 @@ public partial class Main : Node
 		{
 			await _networkClient.ConnectAsPlayerAsync(ServerHost, ServerPort, _pseudo).ConfigureAwait(false);
 			await _networkClient.RequestLobbyListAsync().ConfigureAwait(false);
-			await _networkClient.QuickJoinAsync().ConfigureAwait(false);
+
+			int preferredRoomId = GameLaunchContext.PreferredRoomId;
+			bool createRoom = GameLaunchContext.CreateRoomRequested;
+			GameLaunchContext.PreferredRoomId = -1;
+			GameLaunchContext.CreateRoomRequested = false;
+
+			if (createRoom)
+			{
+				await _networkClient.CreateLobbyAsync().ConfigureAwait(false);
+			}
+			else if (preferredRoomId > 0)
+			{
+				await _networkClient.JoinLobbyAsync(preferredRoomId).ConfigureAwait(false);
+			}
+			else
+			{
+				await _networkClient.QuickJoinAsync().ConfigureAwait(false);
+			}
 		}
 		catch (Exception ex)
 		{

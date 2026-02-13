@@ -60,6 +60,11 @@ public sealed class GameServerNetworkClient : IDisposable
         return SendAsync(new LobbyJoinRequest { RoomId = roomId }, cancellationToken);
     }
 
+    public Task CreateLobbyAsync(CancellationToken cancellationToken = default)
+    {
+        return SendAsync(new LobbyCreateRequest(), cancellationToken);
+    }
+
     public Task SetReadyAsync(bool isReady, CancellationToken cancellationToken = default)
     {
         return SendAsync(new PlayerReadyUpdate { IsReady = isReady }, cancellationToken);
