@@ -66,6 +66,13 @@ namespace gameServer.GameHandling
                 MoveMobs(deltaSeconds);
                 ResolveCollisions(result);
                 EvaluateWinner();
+
+                // Stop the simulation immediately when a winner is known.
+                if (_isMatchFinished)
+                {
+                    _mobsById.Clear();
+                    result.SpawnedMobs.Clear();
+                }
             }
 
             result.MatchFinished = _isMatchFinished;
@@ -172,6 +179,11 @@ namespace gameServer.GameHandling
         private void ResolveCollisions(GameTickResult result)
         {
             float hitDistanceSquared = CollisionRadius * CollisionRadius;
+            int aliveCount = _playersById.Values.Count(p => p.IsAlive);
+            if (aliveCount <= 1)
+            {
+                return;
+            }
 
             foreach (var player in _playersById.Values)
             {
@@ -189,6 +201,14 @@ namespace gameServer.GameHandling
                     {
                         player.IsAlive = false;
                         result.DefeatedPlayerIds.Add(player.Id);
+                        aliveCount--;
+
+                        // As soon as one survivor remains, stop resolving hits.
+                        if (aliveCount <= 1)
+                        {
+                            return;
+                        }
+
                         break;
                     }
                 }

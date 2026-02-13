@@ -22,6 +22,9 @@ public partial class Main : Node
 	private int _currentRoomId = -1;
 	private int _localPlayerId = -1;
 	private bool _serverMatchStarted;
+	private bool _serverMatchEnded;
+	private bool _localDefeatConfirmedByServer;
+	private bool _localDefeatUiShown;
 	private long _lastPositionSentMs;
 
 	private GameServerNetworkClient? _networkClient;
@@ -33,6 +36,8 @@ public partial class Main : Node
 
 	public override void _Ready()
 	{
+		GetNode<Hud>("HUD").HideMatchEndScreen();
+
 		if (UseServerNetworking)
 		{
 			StartServerSession();
@@ -59,6 +64,26 @@ public partial class Main : Node
 
 	public void GameOver()
 	{
+		if (UseServerNetworking)
+		{
+			// In network mode the server is authoritative for death events.
+			if (!_localDefeatConfirmedByServer || _localDefeatUiShown)
+			{
+				return;
+			}
+
+			_localDefeatUiShown = true;
+			var hud = GetNode<Hud>("HUD");
+			hud.ShowEliminated();
+
+			var player = GetNode<Player>("Player");
+			player.Hide();
+			var collisionShape = player.GetNode<CollisionShape2D>("CollisionShape2D");
+			collisionShape.SetDeferred(CollisionShape2D.PropertyName.Disabled, true);
+			GetNode<AudioStreamPlayer>("DeathSound").Play();
+			return;
+		}
+
 		GetNode<Timer>("MobTimer").Stop();
 		GetNode<Timer>("ScoreTimer").Stop();
 		GetNode<Hud>("HUD").ShowGameOver();
@@ -89,6 +114,7 @@ public partial class Main : Node
 		hud.ShowMessage("Get Ready!");
 
 		var player = GetNode<Player>("Player");
+		player.IgnoreLocalHits = false;
 		var startPosition = GetNode<Marker2D>("StartPosition");
 		player.Start(startPosition.Position);
 
@@ -219,6 +245,12 @@ public partial class Main : Node
 
 			case LobbyJoined joined:
 				_currentRoomId = joined.RoomId;
+				_serverMatchStarted = false;
+				_serverMatchEnded = false;
+				_localDefeatConfirmedByServer = false;
+				_localDefeatUiShown = false;
+				_localPlayerId = -1;
+				GetNode<Hud>("HUD").HideMatchEndScreen();
 				GetNode<Hud>("HUD").ShowMessage($"Joined room {_currentRoomId}. Press Start to ready.");
 				break;
 
@@ -236,7 +268,7 @@ public partial class Main : Node
 				break;
 
 			case WorldStateUpdate world:
-				if (world.RoomId == _currentRoomId)
+				if (world.RoomId == _currentRoomId && !_serverMatchEnded)
 				{
 					ApplyWorldState(world);
 				}
@@ -245,6 +277,7 @@ public partial class Main : Node
 			case PlayerOutcome outcome:
 				if (outcome.PlayerId == _localPlayerId && outcome.Outcome == "defeat")
 				{
+					_localDefeatConfirmedByServer = true;
 					GameOver();
 				}
 				if (outcome.PlayerId == _localPlayerId && outcome.Outcome == "victory")
@@ -254,10 +287,16 @@ public partial class Main : Node
 				break;
 
 			case MatchFinished finished:
+				_serverMatchEnded = true;
+				_serverMatchStarted = false;
+				StopServerDrivenMatchVisuals();
+
 				var winnerLabel = string.IsNullOrWhiteSpace(finished.WinnerPseudo)
 					? $"#{finished.WinnerPlayerId}"
 					: finished.WinnerPseudo;
-				GetNode<Hud>("HUD").ShowMessage($"Match finished. Winner: {winnerLabel}");
+				GetNode<Hud>("HUD").ShowMatchEndScreen(
+					winnerLabel,
+					finished.WinnerPlayerId == _localPlayerId);
 				break;
 
 			case ErrorResponse error:
@@ -269,10 +308,16 @@ public partial class Main : Node
 	private void StartServerDrivenMatch()
 	{
 		_serverMatchStarted = true;
+		_serverMatchEnded = false;
+		_localDefeatConfirmedByServer = false;
+		_localDefeatUiShown = false;
+		_lastPositionSentMs = 0;
 		_score = 0;
 		GetNode<Hud>("HUD").UpdateScore(_score);
+		GetNode<Hud>("HUD").HideMatchEndScreen();
 
 		var player = GetNode<Player>("Player");
+		player.IgnoreLocalHits = true;
 		var startPosition = GetNode<Marker2D>("StartPosition");
 		player.Start(startPosition.Position);
 
@@ -283,6 +328,36 @@ public partial class Main : Node
 		GetNode<Timer>("MobTimer").Stop();
 		GetNode<Timer>("ScoreTimer").Stop();
 		GetNode<Timer>("StartTimer").Stop();
+	}
+
+	private void StopServerDrivenMatchVisuals()
+	{
+		ClearServerMobs();
+		ClearRemotePlayers();
+
+		var player = GetNode<Player>("Player");
+		var collisionShape = player.GetNode<CollisionShape2D>("CollisionShape2D");
+		collisionShape.SetDeferred(CollisionShape2D.PropertyName.Disabled, true);
+	}
+
+	private void OnBackToLobby()
+	{
+		_networkClient?.Dispose();
+		_networkClient = null;
+		_serverMatchStarted = false;
+		_serverMatchEnded = false;
+		_localDefeatConfirmedByServer = false;
+		_localDefeatUiShown = false;
+		_localPlayerId = -1;
+		_currentRoomId = -1;
+		GameLaunchContext.CreateRoomRequested = false;
+		GameLaunchContext.PreferredRoomId = -1;
+
+		var err = GetTree().ChangeSceneToFile("res://Hub.tscn");
+		if (err != Error.Ok)
+		{
+			GD.PrintErr($"Error to load hub scene: {err}");
+		}
 	}
 
 	private void ApplyWorldState(WorldStateUpdate world)
@@ -307,12 +382,20 @@ public partial class Main : Node
 			if (me != null)
 			{
 				var player = GetNode<Player>("Player");
-				if (!player.Visible)
+				if (me.IsAlive && !player.Visible)
 				{
 					player.Start(new Vector2(me.X, me.Y));
 				}
 
-				player.Position = new Vector2(me.X, me.Y);
+				if (me.IsAlive)
+				{
+					player.Position = new Vector2(me.X, me.Y);
+				}
+				else
+				{
+					player.Hide();
+				}
+
 				if (!me.IsAlive)
 				{
 					GameOver();
