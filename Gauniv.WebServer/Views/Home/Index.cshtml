@@ -75,6 +75,7 @@
             <th>Taille</th>
             <th>Catégories</th>
             <th>Possédé</th>
+            <th>Action</th>
         </tr>
     </thead>
     <tbody>
@@ -111,75 +112,48 @@
                 </td>
                 <td>@(game.Categories != null && game.Categories.Any() ? string.Join(", ", game.Categories) : "-")</td>
                 <td>@(game.Owned ? "Oui" : "Non")</td>
+                <td>
+                    <button class="btn btn-sm @(game.Owned ? "btn-secondary" : "btn-success") buy-btn" 
+                            data-game-id="@game.Id" 
+                            @(game.Owned ? "disabled" : "")>
+                        Acheter
+                    </button>
+                </td>
             </tr>
         }
     }
     </tbody>
 </table>
 
+@section Scripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            document.querySelectorAll(".buy-btn").forEach(button => {
+                button.addEventListener("click", async function () {
+                    const gameId = this.dataset.gameId;
+                    try {
+                        const response = await fetch(`/api/1.0.0/games/${gameId}/buy`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" }
+                        });
 
-@if (Model.Stats != null)
-{
-    <h1>Statistiques</h1>
+                        if (response.status === 401) {
+                            window.location.href = "/Identity/Account/Login";
+                            return;
+                        }
 
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card text-white bg-primary mb-3">
-                <div class="card-header">Total de jeux</div>
-                <div class="card-body">
-                    <h5 class="card-title">@Model.Stats.TotalGames</h5>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card text-white bg-success mb-3">
-                <div class="card-header">Moyenne de jeux par utilisateur</div>
-                <div class="card-body">
-                    <h5 class="card-title">@Model.Stats.AvgGamesPerUser.ToString("0.00", CultureInfo.GetCultureInfo("fr-FR"))</h5>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card text-white bg-warning mb-3">
-                <div class="card-header">Joueurs connectés</div>
-                <div class="card-body">
-                    <h5 class="card-title">@Model.Stats.MaxSimultaneousPlayers</h5>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <h3>Jeux par catégorie</h3>
-    <div class="row">
-        @foreach (var cat in Model.Stats.GamesPerCategory)
-        {
-            <div class="col-md-3 mb-2">
-                <div class="card border-info">
-                    <div class="card-body p-2">
-                        <strong>@cat.CategoryName</strong> : @cat.Count jeu(s)
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-
-    @if (Model.Stats.MaxPlayersPerGame != null && Model.Stats.MaxPlayersPerGame.Any())
-    {
-        <h3 class="mt-4">Joueurs maximum par jeu</h3>
-        <div class="row">
-            @foreach (var game in Model.Stats.MaxPlayersPerGame)
-            {
-                <div class="col-md-3 mb-2">
-                    <div class="card border-secondary">
-                        <div class="card-body p-2">
-                            <strong>@game.GameName</strong> : @game.MaxPlayers joueur(s)
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
-    }
+                        if (response.ok) {
+                            window.location.reload();
+                        } else {
+                            const err = await response.json();
+                            alert(err.message || "Erreur lors de l'achat.");
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert("Erreur lors de l'achat.");
+                    }
+                });
+            });
+        });
+    </script>
 }
-

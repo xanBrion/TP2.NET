@@ -36,7 +36,7 @@ using Mapster;
 using Microsoft.EntityFrameworkCore;
 
 
-[Route("api/1.0.0/[controller]/[action]")]
+[Route("api/1.0.0/games")]
 [ApiController]
 public class GamesController : ControllerBase
 {
@@ -56,29 +56,40 @@ public class GamesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllGames(
+    public async Task<IActionResult> GetGames(
         [FromQuery] string? name,
         [FromQuery] decimal? minPrice,
         [FromQuery] decimal? maxPrice,
         [FromQuery] int[]? categoryIds,
         [FromQuery] bool? owned,
         [FromQuery] long? minSize,
-        [FromQuery] long? maxSize)
+        [FromQuery] long? maxSize,
+        [FromQuery] int? offset,
+        [FromQuery] int? limit)
     {
         var user = await userManager.GetUserAsync(User);
 
+        if (owned == true && user == null)
+            return Unauthorized();
+
         var query = db.Games
             .Include(g => g.Categories)
-            .Include(g => g.PurchasedByUsers)
             .AsQueryable();
 
-        if (!string.IsNullOrEmpty(name))
+        if (!string.IsNullOrWhiteSpace(name))
             query = query.Where(g => g.Name.Contains(name));
 
         if (minPrice.HasValue)
             query = query.Where(g => g.Price >= minPrice.Value);
+
         if (maxPrice.HasValue)
             query = query.Where(g => g.Price <= maxPrice.Value);
+
+        if (minSize.HasValue)
+            query = query.Where(g => g.PayloadSize >= minSize.Value);
+
+        if (maxSize.HasValue)
+            query = query.Where(g => g.PayloadSize <= maxSize.Value);
 
         if (categoryIds != null && categoryIds.Length > 0)
         {
@@ -86,62 +97,43 @@ public class GamesController : ControllerBase
                 g.Categories.Count(c => categoryIds.Contains(c.Id)) == categoryIds.Length);
         }
 
-        if (minSize.HasValue)
-            query = query.Where(g => g.PayloadSize >= minSize.Value);
-        if (maxSize.HasValue)
-            query = query.Where(g => g.PayloadSize <= maxSize.Value);
-
-        if (owned.HasValue && user != null)
+        if (owned.HasValue)
         {
             if (owned.Value)
-                query = query.Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id));
+            {
+                query = query.Where(g =>
+                    g.PurchasedByUsers.Any(u => u.Id == user!.Id));
+            }
             else
-                query = query.Where(g => g.PurchasedByUsers.All(u => u.Id != user.Id));
+            {
+                query = query.Where(g =>
+                    g.PurchasedByUsers.All(u => u.Id != user!.Id));
+            }
         }
 
-        var games = await query.ToListAsync();
+        if (offset.HasValue)
+            query = query.Skip(offset.Value);
 
-        var dto = games.Select(g => new GameDto
-        {
-            Id = g.Id,
-            Name = g.Name,
-            Description = g.Description,
-            Price = g.Price,
-            PayloadSize = g.PayloadSize,
-            Categories = g.Categories.Select(c => c.Name).ToList(),
-            Owned = user != null && g.PurchasedByUsers.Any(u => u.Id == user.Id)
-        }).ToList();
+        if (limit.HasValue)
+            query = query.Take(limit.Value);
 
-        return Ok(dto);
-    }
-
-    [HttpGet]
-    [Authorize]
-    public async Task<IActionResult> GetMyGames()
-    {
-        var user = await userManager.GetUserAsync(User);
-        if (user == null) return Unauthorized();
-
-        var games = await db.Games
-            .Include(g => g.Categories)
-            .Where(g => g.PurchasedByUsers.Any(u => u.Id == user.Id))
+        var games = await query
+            .Select(g => new GameDto
+            {
+                Id = g.Id,
+                Name = g.Name,
+                Description = g.Description,
+                Price = g.Price,
+                PayloadSize = g.PayloadSize,
+                Categories = g.Categories.Select(c => c.Name).ToList(),
+                Owned = user != null && g.PurchasedByUsers.Any(u => u.Id == user.Id)
+            })
             .ToListAsync();
 
-        var dto = games.Select(g => new GameDto
-        {
-            Id = g.Id,
-            Name = g.Name,
-            Description = g.Description,
-            Price = g.Price,
-            PayloadSize = g.PayloadSize,
-            Categories = g.Categories.Select(c => c.Name).ToList(),
-            Owned = true
-        }).ToList();
-
-        return Ok(dto);
+        return Ok(games);
     }
 
-    [HttpPost("{id:int}")]
+    [HttpPost("{id:int}/buy")]
     [Authorize]
     public async Task<IActionResult> Buy(int id)
     {
@@ -281,15 +273,33 @@ public class GamesController : ControllerBase
         return Ok();
     }
 
-    [HttpGet("{id:int}")]
+    [HttpGet("{id:int}/download")]
     [Authorize]
     public async Task<IActionResult> Download(int id)
     {
         var game = await db.Games.FindAsync(id);
-        if (game == null || !System.IO.File.Exists(game.PayloadPath))
-            return NotFound();
+        if (game == null) 
+            return NotFound("Game not found.");
 
-        var stream = new FileStream(game.PayloadPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
-        return File(stream, "application/octet-stream", Path.GetFileName(game.PayloadPath), enableRangeProcessing: true);
+        if (!System.IO.File.Exists(game.PayloadPath))
+            return NotFound("Game file not found on server.");
+
+        var stream = new FileStream(
+            game.PayloadPath, 
+            FileMode.Open, 
+            FileAccess.Read, 
+            FileShare.Read, 
+            bufferSize: 81920,
+            useAsync: true
+        );
+
+        return File(
+            stream,
+            "application/octet-stream",
+            $"{game.Name}.exe",
+            enableRangeProcessing: true
+        );
+
     }
+
 }

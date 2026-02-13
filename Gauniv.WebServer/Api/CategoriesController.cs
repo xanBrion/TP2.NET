@@ -35,7 +35,7 @@ using Mapster;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 
-[Route("api/1.0.0/[controller]/[action]")]
+[Route("api/1.0.0/categories")]
 [ApiController]
 public class CategoriesController : ControllerBase
 {
@@ -51,7 +51,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllCategories()
+    public async Task<IActionResult> Get()
     {
         var categories = await db.Categories.Include(c => c.Games).ToListAsync();
         var dto = mapper.Map<List<CategoryDto>>(categories);

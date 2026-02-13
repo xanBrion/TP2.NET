@@ -1,0 +1,75 @@
+﻿@model Gauniv.WebServer.Models.AdminViewModel
+@using System.Globalization
+@using X.PagedList.Mvc.Core
+@using X.PagedList
+
+@{
+    ViewData["Title"] = "Admin";
+}
+
+<link href="~/Content/PagedList.css" rel="stylesheet" type="text/css" />
+
+<h1>Statistiques</h1>
+
+@if (Model.Stats != null)
+{
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary mb-3">
+                <div class="card-header">Total de jeux</div>
+                <div class="card-body">
+                    <h5 class="card-title">@Model.Stats.TotalGames</h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-header">Moyenne de jeux par utilisateur</div>
+                <div class="card-body">
+                    <h5 class="card-title">@Model.Stats.AvgGamesPerUser.ToString("0.00", CultureInfo.GetCultureInfo("fr-FR"))</h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card text-white bg-warning mb-3">
+                <div class="card-header">Joueurs connectés</div>
+                <div class="card-body">
+                    <h5 class="card-title">@Model.Stats.MaxSimultaneousPlayers</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h3>Jeux par catégorie</h3>
+    <div class="row">
+        @foreach (var cat in Model.Stats.GamesPerCategory)
+        {
+            <div class="col-md-3 mb-2">
+                <div class="card border-info">
+                    <div class="card-body p-2">
+                        <strong>@cat.CategoryName</strong> : @cat.Count jeu(s)
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (Model.Stats.MaxPlayersPerGame != null && Model.Stats.MaxPlayersPerGame.Any())
+    {
+        <h3 class="mt-4">Joueurs maximum par jeu</h3>
+        <div class="row">
+            @foreach (var game in Model.Stats.MaxPlayersPerGame)
+            {
+                <div class="col-md-3 mb-2">
+                    <div class="card border-secondary">
+                        <div class="card-body p-2">
+                            <strong>@game.GameName</strong> : @game.MaxPlayers joueur(s)
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}

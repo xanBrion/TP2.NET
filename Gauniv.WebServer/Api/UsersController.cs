@@ -34,7 +34,7 @@ using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Gauniv.WebServer.Dtos;
 
-[Route("api/1.0.0/[controller]/[action]")]
+[Route("api/1.0.0/users")]
 [ApiController]
 public class UsersController : ControllerBase
 {

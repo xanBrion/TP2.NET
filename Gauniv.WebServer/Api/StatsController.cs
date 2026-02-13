@@ -34,7 +34,7 @@ using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Gauniv.WebServer.Websocket;
 
-[Route("api/1.0.0/[controller]/[action]")]
+[Route("api/1.0.0/stats/[action]")]
 [ApiController]
 public class StatsController : ControllerBase
 {
