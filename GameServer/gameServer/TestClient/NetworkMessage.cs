@@ -236,4 +236,7 @@ public sealed class MatchFinished : IServerMessage
 
     [Key(2)]
     public int WinnerPlayerId { get; set; }
+
+    [Key(3)]
+    public string WinnerPseudo { get; set; } = "";
 }

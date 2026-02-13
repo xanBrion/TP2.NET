@@ -299,7 +299,10 @@ static async Task TryReadAndPrintServerEventAsync(MessagePackStreamReader reader
             Console.WriteLine($"Outcome room={outcome.RoomId} player={outcome.PlayerId} -> {outcome.Outcome}");
             break;
         case MatchFinished finished:
-            Console.WriteLine($"Match finished room={finished.RoomId} winner={finished.WinnerPlayerId}");
+            var winnerDisplay = string.IsNullOrWhiteSpace(finished.WinnerPseudo)
+                ? $"#{finished.WinnerPlayerId}"
+                : finished.WinnerPseudo;
+            Console.WriteLine($"Match finished room={finished.RoomId} winner={winnerDisplay}");
             break;
         case ErrorResponse error:
             Console.WriteLine($"Server error: {error.Code}");

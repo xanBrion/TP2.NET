@@ -29,6 +29,7 @@ public partial class Main : Node
 	private readonly object _incomingLock = new object();
 	private readonly Queue<IServerMessage> _incomingMessages = new Queue<IServerMessage>();
 	private readonly Dictionary<int, Mob> _serverMobsById = new Dictionary<int, Mob>();
+	private readonly Dictionary<int, RemotePlayerView> _remotePlayersById = new Dictionary<int, RemotePlayerView>();
 
 	public override void _Ready()
 	{
@@ -53,6 +54,7 @@ public partial class Main : Node
 	{
 		_networkClient?.Dispose();
 		_networkClient = null;
+		ClearRemotePlayers();
 	}
 
 	public void GameOver()
@@ -252,7 +254,10 @@ public partial class Main : Node
 				break;
 
 			case MatchFinished finished:
-				GetNode<Hud>("HUD").ShowMessage($"Match finished. Winner: {finished.WinnerPlayerId}");
+				var winnerLabel = string.IsNullOrWhiteSpace(finished.WinnerPseudo)
+					? $"#{finished.WinnerPlayerId}"
+					: finished.WinnerPseudo;
+				GetNode<Hud>("HUD").ShowMessage($"Match finished. Winner: {winnerLabel}");
 				break;
 
 			case ErrorResponse error:
@@ -272,6 +277,7 @@ public partial class Main : Node
 		player.Start(startPosition.Position);
 
 		ClearServerMobs();
+		ClearRemotePlayers();
 		GetTree().CallGroup("mobs", Node.MethodName.QueueFree);
 
 		GetNode<Timer>("MobTimer").Stop();
@@ -312,6 +318,41 @@ public partial class Main : Node
 					GameOver();
 				}
 			}
+		}
+
+		var presentRemotePlayerIds = new HashSet<int>();
+		foreach (var playerState in world.Players)
+		{
+			if (playerState.PlayerId == _localPlayerId || !playerState.IsAlive)
+			{
+				continue;
+			}
+
+			presentRemotePlayerIds.Add(playerState.PlayerId);
+			if (!_remotePlayersById.TryGetValue(playerState.PlayerId, out var remotePlayer)
+				|| !IsInstanceValid(remotePlayer))
+			{
+				remotePlayer = new RemotePlayerView();
+				AddChild(remotePlayer);
+				_remotePlayersById[playerState.PlayerId] = remotePlayer;
+			}
+
+			remotePlayer.Position = new Vector2(playerState.X, playerState.Y);
+			remotePlayer.UpdateFromState(playerState);
+		}
+
+		var staleRemotePlayerIds = _remotePlayersById.Keys
+			.Where(id => !presentRemotePlayerIds.Contains(id))
+			.ToList();
+		foreach (var staleId in staleRemotePlayerIds)
+		{
+			if (_remotePlayersById.TryGetValue(staleId, out var staleRemote)
+				&& IsInstanceValid(staleRemote))
+			{
+				staleRemote.QueueFree();
+			}
+
+			_remotePlayersById.Remove(staleId);
 		}
 
 		var presentMobIds = new HashSet<int>();
@@ -377,5 +418,18 @@ public partial class Main : Node
 		}
 
 		_serverMobsById.Clear();
+	}
+
+	private void ClearRemotePlayers()
+	{
+		foreach (var remotePlayer in _remotePlayersById.Values)
+		{
+			if (IsInstanceValid(remotePlayer))
+			{
+				remotePlayer.QueueFree();
+			}
+		}
+
+		_remotePlayersById.Clear();
 	}
 }

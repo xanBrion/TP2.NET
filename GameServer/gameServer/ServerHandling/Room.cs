@@ -347,10 +347,11 @@ namespace gameServer.ServerHandling
                     if (tick.MatchFinished && !matchFinishedNotified)
                     {
                         matchFinishedNotified = true;
-                        Console.WriteLine($"[Room] {Id} : Match finished. Winner = {tick.WinnerPlayerId}");
+                        string winnerPseudo = "";
 
                         if (tick.WinnerPlayerId >= 0 && playersById.TryGetValue(tick.WinnerPlayerId, out var winner))
                         {
+                            winnerPseudo = winner.Pseudo;
                             winner.SendMessage<IServerMessage>(new PlayerOutcome
                             {
                                 RoomId = Id,
@@ -360,11 +361,15 @@ namespace gameServer.ServerHandling
                             });
                         }
 
+                        Console.WriteLine(
+                            $"[Room] {Id} : Match finished. Winner = {winnerPseudo} ({tick.WinnerPlayerId})");
+
                         SendToParticipants(players, observers, new MatchFinished
                         {
                             RoomId = Id,
                             ServerTimeMs = serverTimeMs,
-                            WinnerPlayerId = tick.WinnerPlayerId
+                            WinnerPlayerId = tick.WinnerPlayerId,
+                            WinnerPseudo = winnerPseudo
                         });
                     }
 
