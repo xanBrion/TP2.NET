@@ -19,6 +19,7 @@ public partial class Hub : Control
 	private Button _joinButton;
 	private Button _quikJoinButton;
 	private Button _refreshButton;
+	private LineEdit _nickname;
 
 	private GameServerNetworkClient _networkClient;
 	private bool _connected;
@@ -35,6 +36,7 @@ public partial class Hub : Control
 		_joinButton = GetNode<Button>("Join");
 		_quikJoinButton = GetNode<Button>("QuickJoin");
 		_refreshButton = GetNode<Button>("Refresh");
+		_nickname = GetNode<LineEdit>("Nickname");
 		_roomsList.Clear();
 		_roomsList.AddItem("Connecting to server...");
 		_ = ConnectAndStartRefreshAsync();
@@ -223,6 +225,11 @@ public partial class Hub : Control
 	}
 
 	private void OnRefresh()
+	{
+
+	}
+
+	private void OnNicknameEdit(string nickname)
 	{
 
 	}
