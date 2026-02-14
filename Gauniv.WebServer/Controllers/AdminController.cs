@@ -1,4 +1,5 @@
 using Gauniv.WebServer.Data;
+using Gauniv.WebServer.Dtos;
 using Gauniv.WebServer.Models;
 using Gauniv.WebServer.Websocket;
 using Microsoft.AspNetCore.Authorization;
@@ -17,18 +18,14 @@ namespace Gauniv.WebServer.Controllers
             this.db = db;
         }
 
-        // GET: /Admin/Index
         public async Task<IActionResult> Index()
         {
-            // Récupération des catégories avec leurs jeux
             var categories = await db.Categories
                                      .Include(c => c.Games)
                                      .ToListAsync();
 
-            // Calcul du nombre maximum de joueurs connectés simultanément
             int maxSimultaneousPlayers = OnlineHub.ConnectedUsers.Values.Sum(u => u.Count);
 
-            // Nombre maximum de joueurs par jeu
             var maxPlayersPerGame = OnlineHub.ConnectedUsers
                 .Where(u => u.Value.CurrentGameId.HasValue)
                 .GroupBy(u => u.Value.CurrentGameId.Value)
@@ -40,7 +37,24 @@ namespace Gauniv.WebServer.Controllers
                 })
                 .ToList();
 
-            // Remplissage du ViewModel
+            var local_games = await db.Games
+                .Include(g => g.Categories)
+                .Select(g => new GameDto
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    Description = g.Description,
+                    Price = g.Price,
+                    PayloadSize = g.PayloadSize,
+                    Categories = g.Categories.Select(c => c.Name).ToList(),
+                    Owned = false
+                })
+                .ToListAsync();
+
+            var AvailableCategories = await db.Categories
+                .Select(c => c.Name)
+                .ToListAsync();
+
             var model = new AdminViewModel
             {
                 Stats = new StatsViewModel
@@ -54,8 +68,11 @@ namespace Gauniv.WebServer.Controllers
                     AvgGamesPerUser = await db.Users.Select(u => u.PurchasedGames.Count).AverageAsync(),
                     MaxSimultaneousPlayers = maxSimultaneousPlayers,
                     MaxPlayersPerGame = maxPlayersPerGame
-                }
+                },
+                Games = local_games,
+                AvailableCategories = AvailableCategories
             };
+
 
             return View(model);
         }

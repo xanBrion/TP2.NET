@@ -3,6 +3,9 @@ namespace Gauniv.WebServer.Models
     public class AdminViewModel
     {
         public StatsViewModel Stats { get; set; } = new StatsViewModel();
+        public List<Dtos.GameDto> Games { get; set; } = new();
+        public List<string> AvailableCategories { get; set; } = new();
+
     }
 
     public class StatsViewModel

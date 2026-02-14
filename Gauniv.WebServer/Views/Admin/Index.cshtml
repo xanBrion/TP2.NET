@@ -1,13 +1,9 @@
 ﻿@model Gauniv.WebServer.Models.AdminViewModel
 @using System.Globalization
-@using X.PagedList.Mvc.Core
-@using X.PagedList
 
 @{
     ViewData["Title"] = "Admin";
 }
-
-<link href="~/Content/PagedList.css" rel="stylesheet" type="text/css" />
 
 <h1>Statistiques</h1>
 
@@ -27,7 +23,9 @@
             <div class="card text-white bg-success mb-3">
                 <div class="card-header">Moyenne de jeux par utilisateur</div>
                 <div class="card-body">
-                    <h5 class="card-title">@Model.Stats.AvgGamesPerUser.ToString("0.00", CultureInfo.GetCultureInfo("fr-FR"))</h5>
+                    <h5 class="card-title">
+                        @Model.Stats.AvgGamesPerUser.ToString("0.00", CultureInfo.GetCultureInfo("fr-FR"))
+                    </h5>
                 </div>
             </div>
         </div>
@@ -49,7 +47,7 @@
             <div class="col-md-3 mb-2">
                 <div class="card border-info">
                     <div class="card-body p-2">
-                        <strong>@cat.CategoryName</strong> : @cat.Count jeu(s)
+                        <strong>@cat.CategoryName</strong> : @cat.Count @(cat.Count > 1 ? "jeux" : "jeu")
                     </div>
                 </div>
             </div>
@@ -73,3 +71,183 @@
         </div>
     }
 }
+
+<hr class="mt-5" />
+
+<h2>Gestion des jeux</h2>
+
+<button class="btn btn-primary mb-3" onclick="showCreateForm()">
+    Ajouter un jeu
+</button>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Description</th>
+            <th>Prix</th>
+            <th>Taille</th>
+            <th>Catégories</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (Model.Games == null || !Model.Games.Any())
+    {
+        <tr>
+            <td colspan="6" class="text-center">Aucun jeu trouvé</td>
+        </tr>
+    }
+    else
+    {
+        @foreach (var game in Model.Games)
+        {
+            <tr>
+                <td>@game.Name</td>
+                <td>@game.Description</td>
+                <td>@game.Price.ToString("0.00", CultureInfo.GetCultureInfo("fr-FR")) €</td>
+                <td>
+                    @{
+                        double local_size = game.PayloadSize;
+                        string local_displaySize;
+
+                        if (local_size >= 1024 * 1024 * 1024)
+                            local_displaySize = (local_size / (1024.0 * 1024.0 * 1024.0))
+                                .ToString("0.00", CultureInfo.GetCultureInfo("fr-FR")) + " Go";
+                        else if (local_size >= 1024 * 1024)
+                            local_displaySize = (local_size / (1024.0 * 1024.0))
+                                .ToString("0.00", CultureInfo.GetCultureInfo("fr-FR")) + " Mo";
+                        else if (local_size >= 1024)
+                            local_displaySize = (local_size / 1024.0)
+                                .ToString("0.00", CultureInfo.GetCultureInfo("fr-FR")) + " Ko";
+                        else
+                            local_displaySize = local_size.ToString("0") + " octets";
+
+                        @local_displaySize
+                    }
+                </td>
+                <td>
+                    @(game.Categories != null && game.Categories.Any()
+                        ? string.Join(", ", game.Categories)
+                        : "-")
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-warning" onclick="editGame(@game.Id)">
+                        Modifier
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteGame(@game.Id)">
+                        Supprimer
+                    </button>
+                </td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+
+<div id="gameFormContainer" style="display:none;" class="mt-4">
+    <h4 id="formTitle">Ajouter un jeu</h4>
+
+    <form id="gameForm" enctype="multipart/form-data">
+        <input type="hidden" id="gameId" />
+
+        <div class="mb-2">
+            <input type="text" id="name" class="form-control" placeholder="Nom" required />
+        </div>
+
+        <div class="mb-2">
+            <textarea id="description" class="form-control" placeholder="Description"></textarea>
+        </div>
+
+        <div class="mb-2">
+            <input type="number" step="0.01" id="price" class="form-control" placeholder="Prix" />
+        </div>
+
+        <div class="mb-2">
+            <input type="file" id="payloadFile" class="form-control" />
+        </div>
+
+        <div class="mb-2">
+            <label>Catégories</label>
+            <select id="categories" class="form-select" multiple>
+                @foreach (var cat in Model.AvailableCategories)
+                {
+                    <option value="@cat">@cat</option>
+                }
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-success">Enregistrer</button>
+        <button type="button" class="btn btn-secondary" onclick="hideForm()">Annuler</button>
+    </form>
+</div>
+
+<script>
+function showCreateForm() {
+    document.getElementById("gameId").value = "";
+    document.getElementById("name").value = "";
+    document.getElementById("description").value = "";
+    document.getElementById("price").value = "";
+    document.getElementById("categories").selectedIndex = -1;
+    document.getElementById("formTitle").innerText = "Ajouter un jeu";
+    document.getElementById("gameFormContainer").style.display = "block";
+}
+
+function hideForm() {
+    document.getElementById("gameFormContainer").style.display = "none";
+}
+
+async function deleteGame(id) {
+    if (!confirm("Confirmer la suppression ?")) return;
+    await fetch(`/api/1.0.0/games/${id}`, { method: "DELETE" });
+    location.reload();
+}
+
+async function editGame(id) {
+    const response = await fetch(`/api/1.0.0/games?offset=0&limit=1000`);
+    const games = await response.json();
+    const game = games.find(g => g.id === id);
+
+    document.getElementById("gameId").value = game.id;
+    document.getElementById("name").value = game.name;
+    document.getElementById("description").value = game.description;
+    document.getElementById("price").value = game.price;
+
+    const select = document.getElementById("categories");
+    Array.from(select.options).forEach(o => {
+        o.selected = game.categories.includes(o.value);
+    });
+
+    document.getElementById("formTitle").innerText = "Modifier un jeu";
+    document.getElementById("gameFormContainer").style.display = "block";
+}
+
+document.getElementById("gameForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const id = document.getElementById("gameId").value;
+    const formData = new FormData();
+
+    formData.append("Name", document.getElementById("name").value);
+    formData.append("Description", document.getElementById("description").value);
+    formData.append("Price", document.getElementById("price").value);
+
+    const fileInput = document.getElementById("payloadFile");
+    if (fileInput.files.length > 0)
+        formData.append("PayloadFile", fileInput.files[0]);
+
+    const selectedCategories = Array.from(
+        document.getElementById("categories").selectedOptions
+    ).map(o => o.value);
+
+    selectedCategories.forEach(c => formData.append("Categories", c));
+
+    if (id) {
+        await fetch(`/api/1.0.0/games/${id}`, { method: "PUT", body: formData });
+    } else {
+        await fetch(`/api/1.0.0/games`, { method: "POST", body: formData });
+    }
+
+    location.reload();
+});
+</script>
