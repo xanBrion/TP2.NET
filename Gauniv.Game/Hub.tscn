@@ -125,6 +125,23 @@ theme_override_fonts/font = ExtResource("2_fvavt")
 theme_override_font_sizes/font_size = 32
 text = "Join"
 
+[node name="Observe" type="Button" parent="." unique_id=127982665]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = 13.0
+offset_top = -184.0
+offset_right = 142.0
+offset_bottom = -137.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_fonts/font = ExtResource("2_fvavt")
+theme_override_font_sizes/font_size = 32
+text = "Observe"
+
 [node name="QuickJoin" type="Button" parent="." unique_id=2068130263]
 layout_mode = 1
 anchors_preset = 7
@@ -132,10 +149,10 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -85.0
-offset_top = -184.0
-offset_right = 85.0
-offset_bottom = -137.0
+offset_left = -181.0
+offset_top = -183.0
+offset_right = -11.0
+offset_bottom = -136.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_fonts/font = ExtResource("2_fvavt")
@@ -159,8 +176,10 @@ theme_override_fonts/font = ExtResource("2_fvavt")
 theme_override_font_sizes/font_size = 32
 text = "Quit"
 
+[connection signal="text_changed" from="Nickname" to="." method="OnNicknameEdit"]
 [connection signal="pressed" from="Refresh" to="." method="OnRefresh"]
 [connection signal="pressed" from="Create" to="." method="OnCreateRoom"]
 [connection signal="pressed" from="Join" to="." method="OnJoinRoom"]
+[connection signal="pressed" from="Observe" to="." method="OnObserve"]
 [connection signal="pressed" from="QuickJoin" to="." method="OnQuickJoinRoom"]
 [connection signal="pressed" from="Quit" to="." method="OnQuit"]
