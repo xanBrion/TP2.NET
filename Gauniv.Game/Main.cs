@@ -17,10 +17,10 @@ public partial class Main : Node
 	[Export]
 	public int ServerPort { get; set; } = 13000;
 
-	private int _score;
 	private string _pseudo = string.Empty;
 	private int _currentRoomId = -1;
 	private int _localPlayerId = -1;
+	private bool _isObserverMode;
 	private bool _serverMatchStarted;
 	private bool _serverMatchEnded;
 	private bool _localDefeatConfirmedByServer;
@@ -32,7 +32,8 @@ public partial class Main : Node
 	private readonly object _incomingLock = new object();
 	private readonly Queue<IServerMessage> _incomingMessages = new Queue<IServerMessage>();
 	private readonly Dictionary<int, Mob> _serverMobsById = new Dictionary<int, Mob>();
-	private readonly Dictionary<int, RemotePlayerView> _remotePlayersById = new Dictionary<int, RemotePlayerView>();
+	private readonly Dictionary<int, Player> _remotePlayersById = new Dictionary<int, Player>();
+	private static readonly PackedScene RemotePlayerScene = GD.Load<PackedScene>("res://player.tscn");
 
 	public override void _Ready()
 	{
@@ -96,6 +97,12 @@ public partial class Main : Node
 	{
 		if (UseServerNetworking)
 		{
+			if (_isObserverMode)
+			{
+				GetNode<Hud>("HUD").ShowMessage("Observer mode");
+				return;
+			}
+
 			if (_networkClient == null || !_networkClient.IsConnected)
 			{
 				GD.PrintErr("[Network] Not connected to game server.");
@@ -107,10 +114,7 @@ public partial class Main : Node
 			return;
 		}
 
-		_score = 0;
-
 		var hud = GetNode<Hud>("HUD");
-		hud.UpdateScore(_score);
 		hud.ShowMessage("Get Ready!");
 
 		var player = GetNode<Player>("Player");
@@ -131,8 +135,7 @@ public partial class Main : Node
 			return;
 		}
 
-		_score++;
-		GetNode<Hud>("HUD").UpdateScore(_score);
+		// Score UI removed.
 	}
 
 	private void OnStartTimerTimeout()
@@ -171,32 +174,52 @@ public partial class Main : Node
 
 	private async void StartServerSession()
 	{
-		_pseudo = $"Godot_{(int)(GD.Randi() % 10000)}";
 		_networkClient = new GameServerNetworkClient();
 		_networkClient.ServerMessageReceived += OnServerMessageReceived;
 		_networkClient.ErrorOccurred += message => GD.PrintErr($"[Network] {message}");
 
 		try
 		{
-			await _networkClient.ConnectAsPlayerAsync(ServerHost, ServerPort, _pseudo).ConfigureAwait(false);
-			await _networkClient.RequestLobbyListAsync().ConfigureAwait(false);
-
 			int preferredRoomId = GameLaunchContext.PreferredRoomId;
 			bool createRoom = GameLaunchContext.CreateRoomRequested;
+			bool observeRoom = GameLaunchContext.ObserveRoomRequested;
+			var preferredPseudo = GameLaunchContext.PreferredPseudo.Trim();
+			_pseudo = string.IsNullOrWhiteSpace(preferredPseudo)
+				? $"Godot_{(int)(GD.Randi() % 10000)}"
+				: preferredPseudo;
+
 			GameLaunchContext.PreferredRoomId = -1;
 			GameLaunchContext.CreateRoomRequested = false;
+			GameLaunchContext.ObserveRoomRequested = false;
 
-			if (createRoom)
+			if (observeRoom && preferredRoomId > 0)
 			{
-				await _networkClient.CreateLobbyAsync().ConfigureAwait(false);
-			}
-			else if (preferredRoomId > 0)
-			{
-				await _networkClient.JoinLobbyAsync(preferredRoomId).ConfigureAwait(false);
+				_isObserverMode = true;
+				await _networkClient.ConnectAsObserverAsync(ServerHost, ServerPort, preferredRoomId)
+					.ConfigureAwait(false);
+
+				var localPlayer = GetNode<Player>("Player");
+				localPlayer.Hide();
+				localPlayer.GetNode<CollisionShape2D>("CollisionShape2D").Disabled = true;
 			}
 			else
 			{
-				await _networkClient.QuickJoinAsync().ConfigureAwait(false);
+				_isObserverMode = false;
+				await _networkClient.ConnectAsPlayerAsync(ServerHost, ServerPort, _pseudo).ConfigureAwait(false);
+				await _networkClient.RequestLobbyListAsync().ConfigureAwait(false);
+
+				if (createRoom)
+				{
+					await _networkClient.CreateLobbyAsync().ConfigureAwait(false);
+				}
+				else if (preferredRoomId > 0)
+				{
+					await _networkClient.JoinLobbyAsync(preferredRoomId).ConfigureAwait(false);
+				}
+				else
+				{
+					await _networkClient.QuickJoinAsync().ConfigureAwait(false);
+				}
 			}
 		}
 		catch (Exception ex)
@@ -245,6 +268,7 @@ public partial class Main : Node
 
 			case LobbyJoined joined:
 				_currentRoomId = joined.RoomId;
+				_isObserverMode = false;
 				_serverMatchStarted = false;
 				_serverMatchEnded = false;
 				_localDefeatConfirmedByServer = false;
@@ -254,6 +278,18 @@ public partial class Main : Node
 				GetNode<Hud>("HUD").ShowMessage($"Joined room {_currentRoomId}. Press Start to ready.");
 				break;
 
+			case ObserverJoined joined:
+				_currentRoomId = joined.RoomId;
+				_isObserverMode = true;
+				_serverMatchStarted = false;
+				_serverMatchEnded = false;
+				_localDefeatConfirmedByServer = false;
+				_localDefeatUiShown = false;
+				_localPlayerId = -1;
+				GetNode<Hud>("HUD").HideMatchEndScreen();
+				GetNode<Hud>("HUD").ShowMessage($"Observing room {_currentRoomId}");
+				break;
+
 			case RoomReadinessUpdate readiness:
 				if (readiness.RoomId != _currentRoomId)
 				{
@@ -261,7 +297,7 @@ public partial class Main : Node
 				}
 
 				GetNode<Hud>("HUD").ShowMessage($"Ready {readiness.ReadyPlayers}/{readiness.TotalPlayers}");
-				if (readiness.CanStart && !_serverMatchStarted)
+				if (!_isObserverMode && readiness.CanStart && !_serverMatchStarted)
 				{
 					StartServerDrivenMatch();
 				}
@@ -312,8 +348,6 @@ public partial class Main : Node
 		_localDefeatConfirmedByServer = false;
 		_localDefeatUiShown = false;
 		_lastPositionSentMs = 0;
-		_score = 0;
-		GetNode<Hud>("HUD").UpdateScore(_score);
 		GetNode<Hud>("HUD").HideMatchEndScreen();
 
 		var player = GetNode<Player>("Player");
@@ -344,6 +378,7 @@ public partial class Main : Node
 	{
 		_networkClient?.Dispose();
 		_networkClient = null;
+		_isObserverMode = false;
 		_serverMatchStarted = false;
 		_serverMatchEnded = false;
 		_localDefeatConfirmedByServer = false;
@@ -351,6 +386,7 @@ public partial class Main : Node
 		_localPlayerId = -1;
 		_currentRoomId = -1;
 		GameLaunchContext.CreateRoomRequested = false;
+		GameLaunchContext.ObserveRoomRequested = false;
 		GameLaunchContext.PreferredRoomId = -1;
 
 		var err = GetTree().ChangeSceneToFile("res://Hub.tscn");
@@ -367,7 +403,7 @@ public partial class Main : Node
 			return;
 		}
 
-		if (_localPlayerId <= 0)
+		if (!_isObserverMode && _localPlayerId <= 0)
 		{
 			var meByPseudo = world.Players.FirstOrDefault(p => p.Pseudo == _networkClient.Pseudo);
 			if (meByPseudo != null)
@@ -376,7 +412,7 @@ public partial class Main : Node
 			}
 		}
 
-		if (_localPlayerId > 0)
+		if (!_isObserverMode && _localPlayerId > 0)
 		{
 			var me = world.Players.FirstOrDefault(p => p.PlayerId == _localPlayerId);
 			if (me != null)
@@ -415,13 +451,17 @@ public partial class Main : Node
 			if (!_remotePlayersById.TryGetValue(playerState.PlayerId, out var remotePlayer)
 				|| !IsInstanceValid(remotePlayer))
 			{
-				remotePlayer = new RemotePlayerView();
+				remotePlayer = RemotePlayerScene.Instantiate<Player>();
+				remotePlayer.IsLocallyControlled = false;
+				remotePlayer.IsRed = true;
+				remotePlayer.IgnoreLocalHits = true;
 				AddChild(remotePlayer);
+				remotePlayer.Start(new Vector2(playerState.X, playerState.Y));
+				remotePlayer.GetNode<CollisionShape2D>("CollisionShape2D").Disabled = true;
 				_remotePlayersById[playerState.PlayerId] = remotePlayer;
 			}
 
 			remotePlayer.Position = new Vector2(playerState.X, playerState.Y);
-			remotePlayer.UpdateFromState(playerState);
 		}
 
 		var staleRemotePlayerIds = _remotePlayersById.Keys
@@ -469,7 +509,7 @@ public partial class Main : Node
 
 	private void SendLocalPositionToServer()
 	{
-		if (!_serverMatchStarted || _networkClient == null || !_networkClient.IsConnected)
+		if (_isObserverMode || !_serverMatchStarted || _networkClient == null || !_networkClient.IsConnected)
 		{
 			return;
 		}

@@ -74,11 +74,6 @@ public partial class Hud : CanvasLayer
 		GetNode<Control>("MatchEnd").Hide();
 	}
 
-	public void UpdateScore(int score)
-	{
-		GetNode<Label>("ScoreLabel").Text = score.ToString();
-	}
-
 	// We also specified this function name in PascalCase in the editor's connection window.
 	private void OnStartButtonPressed()
 	{

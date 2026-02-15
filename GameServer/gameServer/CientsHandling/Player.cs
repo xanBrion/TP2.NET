@@ -11,6 +11,7 @@ namespace gameServer.ClientsHandling
         private static int _nextId = 0;
         private int _disconnectNotified = 0;
 
+        private readonly NetworkStream _stream;
         private readonly MessagePackStreamReader _streamReader;
 
         public event Action<Player>? Disconnected;
@@ -21,15 +22,12 @@ namespace gameServer.ClientsHandling
         public float PositionY { get; set; }
         public bool IsAlive { get; set; } = true;
         public bool IsReady { get; set; }
-        public TcpClient Client { get; }
-        public NetworkStream Stream { get; }
 
         public Player(TcpClient client)
         {
             Id = System.Threading.Interlocked.Increment(ref _nextId);
-            Client = client;
-            Stream = client.GetStream();
-            _streamReader = new MessagePackStreamReader(Stream);
+            _stream = client.GetStream();
+            _streamReader = new MessagePackStreamReader(_stream);
             Console.WriteLine($"[Player] {Id} : Connected");
         }
 
@@ -46,8 +44,8 @@ namespace gameServer.ClientsHandling
 
         public void SendMessage<T>(T message)
         {
-            MessagePackSerializer.Serialize(Stream, message);
-            Stream.Flush();
+            MessagePackSerializer.Serialize(_stream, message);
+            _stream.Flush();
         }
 
         public void NotifyDisconnected()

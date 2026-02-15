@@ -10,8 +10,8 @@ public partial class Player : Area2D
 	public int Speed { get; set; } = 400;
 
 	public bool IsRed { get; set; } = false;
+	public bool IsLocallyControlled { get; set; } = true;
 
-    public Vector2 ScreenSize;
 	public Vector2 ScreenSize;
 	public bool IgnoreLocalHits { get; set; }
 
@@ -25,7 +25,15 @@ public partial class Player : Area2D
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
 	{
-		var velocity = Vector2.Zero; // The player's movement vector.
+		var animatedSprite2D = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
+		if (!IsLocallyControlled)
+		{
+			animatedSprite2D.Animation = IsRed ? "upRed" : "up";
+			animatedSprite2D.Stop();
+			return;
+		}
+
+		var velocity = Vector2.Zero;
 
 		if (Input.IsActionPressed("move_right"))
 		{
@@ -47,8 +55,6 @@ public partial class Player : Area2D
 			velocity.Y -= 1;
 		}
 
-		var animatedSprite2D = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
-
 		if (velocity.Length() > 0)
 		{
 			velocity = velocity.Normalized() * Speed;
@@ -67,33 +73,32 @@ public partial class Player : Area2D
 
 		if (IsRed)
 		{
-            if (velocity.X != 0)
-            {
-                animatedSprite2D.Animation = "walkRed";
-                animatedSprite2D.FlipV = false;
-                animatedSprite2D.FlipH = velocity.X < 0;
-            }
-            else if (velocity.Y != 0)
-            {
-                animatedSprite2D.Animation = "upRed";
-                animatedSprite2D.FlipV = velocity.Y > 0;
-            }
-        }
-		else 
+			if (velocity.X != 0)
+			{
+				animatedSprite2D.Animation = "walkRed";
+				animatedSprite2D.FlipV = false;
+				animatedSprite2D.FlipH = velocity.X < 0;
+			}
+			else if (velocity.Y != 0)
+			{
+				animatedSprite2D.Animation = "upRed";
+				animatedSprite2D.FlipV = velocity.Y > 0;
+			}
+		}
+		else
 		{
-            if (velocity.X != 0)
-            {
-                animatedSprite2D.Animation = "walk";
-                animatedSprite2D.FlipV = false;
-                // See the note below about the following boolean assignment.
-                animatedSprite2D.FlipH = velocity.X < 0;
-            }
-            else if (velocity.Y != 0)
-            {
-                animatedSprite2D.Animation = "up";
-                animatedSprite2D.FlipV = velocity.Y > 0;
-            }
-        }
+			if (velocity.X != 0)
+			{
+				animatedSprite2D.Animation = "walk";
+				animatedSprite2D.FlipV = false;
+				animatedSprite2D.FlipH = velocity.X < 0;
+			}
+			else if (velocity.Y != 0)
+			{
+				animatedSprite2D.Animation = "up";
+				animatedSprite2D.FlipV = velocity.Y > 0;
+			}
+		}
 	}
 
 	// We also specified this function name in PascalCase in the editor's connection window.
@@ -112,6 +117,9 @@ public partial class Player : Area2D
 	public void Start(Vector2 position)
 	{
 		Position = position;
+		var animatedSprite2D = GetNode<AnimatedSprite2D>("AnimatedSprite2D");
+		animatedSprite2D.Animation = IsRed ? "upRed" : "up";
+		animatedSprite2D.Stop();
 		Show();
 		GetNode<CollisionShape2D>("CollisionShape2D").Disabled = false;
 	}

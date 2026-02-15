@@ -43,17 +43,6 @@ namespace gameServer.ServerHandling
 
         public int Capacity => MaxPlayers;
 
-        public int ObserverCount
-        {
-            get
-            {
-                lock (_playersLock)
-                {
-                    return _observersById.Count;
-                }
-            }
-        }
-
         public int ParticipantCount
         {
             get
@@ -91,7 +80,7 @@ namespace gameServer.ServerHandling
                 player.IsReady = false;
                 _playersById.Add(player.Id, player);
 
-                _game ??= new Game(Id);
+                _game ??= new Game();
                 _game.AddPlayer(player);
                 Console.WriteLine($"[Room] {Id} : Player {player.Id} joined.");
                 EnsureGameLoopStarted_NoLock();

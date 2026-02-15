@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using gameServer.ServerHandling;
 
 namespace gameServer.ClientsHandling
 {

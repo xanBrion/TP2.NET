@@ -45,6 +45,30 @@ public sealed class GameServerNetworkClient : IDisposable
         await SendAsync(new ClientPseudoResponse { Pseudo = pseudo }, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task ConnectAsObserverAsync(
+        string host,
+        int port,
+        int roomId,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsConnected)
+        {
+            return;
+        }
+
+        _client = new TcpClient();
+        await _client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+
+        _stream = _client.GetStream();
+        _reader = new MessagePackStreamReader(_stream);
+
+        Pseudo = string.Empty;
+        _readLoopCts = new CancellationTokenSource();
+        _readLoopTask = Task.Run(() => ReadLoopAsync(_readLoopCts.Token));
+
+        await SendAsync(new ObserverConnectRequest { RoomId = roomId }, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task RequestLobbyListAsync(CancellationToken cancellationToken = default)
     {
         return SendAsync(new LobbyListRequest(), cancellationToken);

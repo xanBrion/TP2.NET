@@ -26,15 +26,9 @@ namespace gameServer.GameHandling
         private bool _isMatchFinished;
         private int _winnerPlayerId = -1;
 
-        public Game(int roomId)
+        public Game()
         {
-            RoomId = roomId;
-            StartedAtUtc = DateTime.UtcNow;
         }
-
-        public int RoomId { get; }
-
-        public DateTime StartedAtUtc { get; }
 
         public void AddPlayer(Player player)
         {

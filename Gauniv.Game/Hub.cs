@@ -18,7 +18,6 @@ public partial class Hub : Control
 	private Button _createButton;
 	private Button _joinButton;
 	private Button _quikJoinButton;
-	private Button _refreshButton;
 	private Button _observeButton;
 	private LineEdit _nickname;
 
@@ -36,9 +35,9 @@ public partial class Hub : Control
 		_createButton = GetNode<Button>("Create");
 		_joinButton = GetNode<Button>("Join");
 		_quikJoinButton = GetNode<Button>("QuickJoin");
-		_refreshButton = GetNode<Button>("Refresh");
 		_observeButton = GetNode<Button>("Observe");
 		_nickname = GetNode<LineEdit>("Nickname");
+		_nickname.Text = GameLaunchContext.PreferredPseudo;
 		_roomsList.Clear();
 		_roomsList.AddItem("Connecting to server...");
 		_ = ConnectAndStartRefreshAsync();
@@ -165,7 +164,9 @@ public partial class Hub : Control
 
 	private void OnCreateRoom()
 	{
+		SyncPseudoFromInput();
 		GameLaunchContext.CreateRoomRequested = true;
+		GameLaunchContext.ObserveRoomRequested = false;
 		GameLaunchContext.PreferredRoomId = -1;
 		ChangeToGameScene();
 	}
@@ -187,7 +188,9 @@ public partial class Hub : Control
 		}
 
 		int roomId = _rooms[index].Id;
+		SyncPseudoFromInput();
 		GameLaunchContext.CreateRoomRequested = false;
+		GameLaunchContext.ObserveRoomRequested = false;
 		GameLaunchContext.PreferredRoomId = roomId;
 		ChangeToGameScene();
 	}
@@ -204,7 +207,9 @@ public partial class Hub : Control
 		{
 			if (room.PlayerCount < room.Capacity)
 			{
+				SyncPseudoFromInput();
 				GameLaunchContext.CreateRoomRequested = false;
+				GameLaunchContext.ObserveRoomRequested = false;
 				GameLaunchContext.PreferredRoomId = room.Id;
 				ChangeToGameScene();
 				return;
@@ -226,18 +231,36 @@ public partial class Hub : Control
 		}
 	}
 
-	private void OnRefresh()
-	{
-
-	}
-
 	private void OnNicknameEdit(string nickname)
 	{
-
+		GameLaunchContext.PreferredPseudo = nickname.Trim();
 	}
 
 	private void OnObserve()
 	{
+		var selected = _roomsList.GetSelectedItems();
+		if (selected.Length == 0)
+		{
+			GD.Print("No room selected");
+			return;
+		}
 
+		int index = selected[0];
+		if (index < 0 || index >= _rooms.Count)
+		{
+			GD.Print("Selected row is not a lobby");
+			return;
+		}
+
+		SyncPseudoFromInput();
+		GameLaunchContext.CreateRoomRequested = false;
+		GameLaunchContext.ObserveRoomRequested = true;
+		GameLaunchContext.PreferredRoomId = _rooms[index].Id;
+		ChangeToGameScene();
+	}
+
+	private void SyncPseudoFromInput()
+	{
+		GameLaunchContext.PreferredPseudo = _nickname.Text.Trim();
 	}
 }

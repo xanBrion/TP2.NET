@@ -59,23 +59,6 @@ theme_override_font_sizes/font_size = 32
 placeholder_text = "Nickname"
 max_length = 10
 
-[node name="Refresh" type="Button" parent="." unique_id=635966413]
-layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = 421.0
-offset_top = -496.0
-offset_right = 561.0
-offset_bottom = -449.0
-grow_horizontal = 2
-grow_vertical = 0
-theme_override_fonts/font = ExtResource("2_fvavt")
-theme_override_font_sizes/font_size = 32
-text = "Refresh"
-
 [node name="RoomsList" type="ItemList" parent="." unique_id=693239450]
 layout_mode = 1
 anchors_preset = 8
@@ -177,7 +160,6 @@ theme_override_font_sizes/font_size = 32
 text = "Quit"
 
 [connection signal="text_changed" from="Nickname" to="." method="OnNicknameEdit"]
-[connection signal="pressed" from="Refresh" to="." method="OnRefresh"]
 [connection signal="pressed" from="Create" to="." method="OnCreateRoom"]
 [connection signal="pressed" from="Join" to="." method="OnJoinRoom"]
 [connection signal="pressed" from="Observe" to="." method="OnObserve"]
