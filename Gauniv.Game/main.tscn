@@ -70,4 +70,5 @@ stream = SubResource("AudioStreamOggVorbis_lquwl")
 [connection signal="timeout" from="MobTimer" to="." method="OnMobTimerTimeout"]
 [connection signal="timeout" from="ScoreTimer" to="." method="OnScoreTimerTimeout"]
 [connection signal="timeout" from="StartTimer" to="." method="OnStartTimerTimeout"]
+[connection signal="BackToLobby" from="HUD" to="." method="OnBackToLobby"]
 [connection signal="StartGame" from="HUD" to="." method="NewGame"]

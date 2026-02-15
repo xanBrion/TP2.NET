@@ -91,8 +91,11 @@ namespace gameServer.ServerHandling
                     {
                         break;
                     }
+                    if (receivedMessage.GetType().Name != "PlayerPositionUpdate")
+                    {
+                        Console.WriteLine($"[TCPServer] Player {player.Id} : Received {receivedMessage.GetType().Name}");
 
-                    Console.WriteLine($"[TCPServer] Player {player.Id} : Received {receivedMessage.GetType().Name}");
+                    }
                     assignedRoom.HandleMessage(player, receivedMessage);
                 }
             }

@@ -12,6 +12,8 @@ public partial class Player : Area2D
 	public bool IsRed { get; set; } = false;
 
     public Vector2 ScreenSize;
+	public Vector2 ScreenSize;
+	public bool IgnoreLocalHits { get; set; }
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -97,6 +99,11 @@ public partial class Player : Area2D
 	// We also specified this function name in PascalCase in the editor's connection window.
 	private void OnBodyEntered(Node2D body)
 	{
+		if (IgnoreLocalHits)
+		{
+			return;
+		}
+
 		Hide(); // Player disappears after being hit.
 		EmitSignal(SignalName.Hit);
 		// Must be deferred as we can't change physics properties on a physics callback.
