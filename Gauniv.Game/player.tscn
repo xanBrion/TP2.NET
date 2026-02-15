@@ -5,6 +5,10 @@
 [ext_resource type="Texture2D" uid="uid://csbu1re77psy" path="res://art/playerGrey_up2.png" id="2_sweqy"]
 [ext_resource type="Texture2D" uid="uid://4dt1hmkhtc4d" path="res://art/playerGrey_walk1.png" id="3_2hs0m"]
 [ext_resource type="Texture2D" uid="uid://dlue2vn7l0bpm" path="res://art/playerGrey_walk2.png" id="4_1jxqw"]
+[ext_resource type="Texture2D" uid="uid://pdygodh6625h" path="res://art/playerRed_up1.png" id="4_b26j0"]
+[ext_resource type="Texture2D" uid="uid://d2k0s1q0mv30" path="res://art/playerRed_up2.png" id="5_n7ghd"]
+[ext_resource type="Texture2D" uid="uid://bajqj072u4q18" path="res://art/playerRed_walk1.png" id="8_nvl01"]
+[ext_resource type="Texture2D" uid="uid://coojrefvudeas" path="res://art/playerRed_walk2.png" id="9_ivps1"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_dw050"]
 animations = [{
@@ -21,6 +25,17 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
+"texture": ExtResource("4_b26j0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_n7ghd")
+}],
+"loop": true,
+"name": &"upRed",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
 "texture": ExtResource("3_2hs0m")
 }, {
 "duration": 1.0,
@@ -28,6 +43,17 @@ animations = [{
 }],
 "loop": true,
 "name": &"walk",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("8_nvl01")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_ivps1")
+}],
+"loop": true,
+"name": &"walkRed",
 "speed": 5.0
 }]
 
@@ -42,7 +68,7 @@ metadata/_edit_group_ = true
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=483617193]
 scale = Vector2(0.5, 0.5)
 sprite_frames = SubResource("SpriteFrames_dw050")
-animation = &"up"
+animation = &"upRed"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=128328785]
 shape = SubResource("CapsuleShape2D_b26j0")

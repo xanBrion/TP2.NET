@@ -9,6 +9,9 @@ public partial class Player : Area2D
 	[Export]
 	public int Speed { get; set; } = 400;
 
+	public bool IsRed { get; set; } = false;
+
+    public Vector2 ScreenSize;
 	public Vector2 ScreenSize;
 	public bool IgnoreLocalHits { get; set; }
 
@@ -62,18 +65,35 @@ public partial class Player : Area2D
 			y: Mathf.Clamp(Position.Y, 0, ScreenSize.Y)
 		);
 
-		if (velocity.X != 0)
+		if (IsRed)
 		{
-			animatedSprite2D.Animation = "walk";
-			animatedSprite2D.FlipV = false;
-			// See the note below about the following boolean assignment.
-			animatedSprite2D.FlipH = velocity.X < 0;
-		}
-		else if (velocity.Y != 0)
+            if (velocity.X != 0)
+            {
+                animatedSprite2D.Animation = "walkRed";
+                animatedSprite2D.FlipV = false;
+                animatedSprite2D.FlipH = velocity.X < 0;
+            }
+            else if (velocity.Y != 0)
+            {
+                animatedSprite2D.Animation = "upRed";
+                animatedSprite2D.FlipV = velocity.Y > 0;
+            }
+        }
+		else 
 		{
-			animatedSprite2D.Animation = "up";
-			animatedSprite2D.FlipV = velocity.Y > 0;
-		}
+            if (velocity.X != 0)
+            {
+                animatedSprite2D.Animation = "walk";
+                animatedSprite2D.FlipV = false;
+                // See the note below about the following boolean assignment.
+                animatedSprite2D.FlipH = velocity.X < 0;
+            }
+            else if (velocity.Y != 0)
+            {
+                animatedSprite2D.Animation = "up";
+                animatedSprite2D.FlipV = velocity.Y > 0;
+            }
+        }
 	}
 
 	// We also specified this function name in PascalCase in the editor's connection window.
