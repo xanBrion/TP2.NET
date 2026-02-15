@@ -1,0 +1,102 @@
+#region Licence
+// Cyril Tisserand
+// Projet Gauniv - WebServer
+// Gauniv 2025
+// 
+// Licence MIT
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+// and associated documentation files (the “Software”), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// Any new method must be in a different namespace than the previous ones
+// and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions: 
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. 
+// The Software is provided “as is”, without warranty of any kind, express or implied,
+// including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement.
+// Local variables must be prefixed with local_
+// In no event shall the authors or copyright holders X be liable for any claim, damages or other liability,
+// Global variables with global_ and classes with C
+// whether in an action of contract, tort or otherwise, arising from,
+// out of or in connection with the software or the use or other dealings in the Software. 
+// 
+// Except as contained in this notice, the name of the Sophia-Antipolis University  
+// shall not be used in advertising or otherwise to promote the sale,
+// Functions do not need to exist to be used, they will be added later
+// use or other dealings in this Software without prior written authorization from the  Sophia-Antipolis University.
+// 
+// Please respect the team's standards for any future contribution
+#endregion
+using Gauniv.WebServer.Data;
+using Gauniv.WebServer.Dtos;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using MapsterMapper;
+using Mapster;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+
+[Route("api/1.0.0/categories")]
+[ApiController]
+public class CategoriesController : ControllerBase
+{
+    private readonly ApplicationDbContext db;
+    private readonly IMapper mapper;
+    private readonly UserManager<User> userManager;
+
+    public CategoriesController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
+    {
+        this.db = db;
+        this.mapper = mapper;
+        this.userManager = userManager;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Get()
+    {
+        var categories = await db.Categories.Include(c => c.Games).ToListAsync();
+        var dto = mapper.Map<List<CategoryDto>>(categories);
+        return Ok(dto);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Add([FromBody] string name)
+    {
+        var category = new Category { Name = name };
+        db.Categories.Add(category);
+        await db.SaveChangesAsync();
+        return Ok(category);
+    }
+
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateCategoryDto dto)
+    {
+        var category = await db.Categories.FindAsync(id);
+        if (category == null)
+            return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(dto.Name))
+            category.Name = dto.Name;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new CategoryDto
+        {
+            Id = category.Id,
+            Name = category.Name
+        });
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var category = await db.Categories.FindAsync(id);
+        if (category == null) return NotFound();
+
+        db.Categories.Remove(category);
+        await db.SaveChangesAsync();
+        return Ok();
+    }
+}

@@ -27,11 +27,20 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
 
 namespace Gauniv.WebServer.Data
 {
+    public enum UserStatus
+    {
+        Offline,
+        Online,
+        InGame
+    }
     public class User : IdentityUser
     {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public ICollection<Game> PurchasedGames { get; set; } = new List<Game>();
+        public UserStatus Status { get; set; } = UserStatus.Offline;
     }
 }

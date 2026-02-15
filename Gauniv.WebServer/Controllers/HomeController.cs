@@ -27,36 +27,113 @@
 // Please respect the team's standards for any future contribution
 #endregion
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Text;
-using CommunityToolkit.HighPerformance;
 using Gauniv.WebServer.Data;
+using Gauniv.WebServer.Dtos;
 using Gauniv.WebServer.Models;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using NuGet.Packaging;
-using X.PagedList.Extensions;
 
 namespace Gauniv.WebServer.Controllers
 {
-    public class HomeController(ILogger<HomeController> logger, ApplicationDbContext applicationDbContext, UserManager<User> userManager) : Controller
+    public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger = logger;
-        private readonly ApplicationDbContext applicationDbContext = applicationDbContext;
-        private readonly UserManager<User> userManager = userManager;
+        private readonly ApplicationDbContext db;
+        private readonly UserManager<User> userManager;
 
-        public IActionResult Index()
+        public HomeController(ApplicationDbContext db, UserManager<User> userManager)
         {
-            return View(new List<Game> { new() { Id = 0 } });
+            this.db = db;
+            this.userManager = userManager;
         }
 
+        public async Task<IActionResult> Index(
+            string? filterName,
+            decimal? filterMinPrice,
+            decimal? filterMaxPrice,
+            string? filterCategory,
+            bool? filterOwned)
+        {
+            var user = await userManager.GetUserAsync(User);
+            bool isAdmin = user != null && await userManager.IsInRoleAsync(user, "Admin");
+
+            var allGames = await db.Games
+                .Include(g => g.Categories)
+                .Include(g => g.PurchasedByUsers)
+                .Select(g => new GameDto
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    Description = g.Description,
+                    Price = g.Price,
+                    PayloadSize = g.PayloadSize,
+                    Categories = g.Categories.Select(c => c.Name).ToList(),
+                    Owned = false
+                }).ToListAsync();
+
+            if (user != null)
+            {
+                var ownedGameIds = user != null
+                    ? await db.Users
+                        .Where(u => u.Id == user.Id)
+                        .SelectMany(u => u.PurchasedGames)
+                        .Select(g => g.Id)
+                        .ToListAsync()
+                    : new List<int>();
+                allGames.ForEach(g => g.Owned = ownedGameIds.Contains(g.Id));
+            }
+
+            if (filterOwned.HasValue)
+            {
+                if (user != null)
+                {
+                    if (filterOwned.Value)
+                        allGames = allGames.Where(g => g.Owned).ToList();
+                    else
+                        allGames = allGames.Where(g => !g.Owned).ToList();
+                }
+                else
+                {
+                    if (filterOwned.Value)
+                    {
+                        allGames = new List<GameDto>();
+                    }
+                    else
+                    {
+                        allGames = allGames.Where(g => !g.Owned).ToList();
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(filterName))
+                allGames = allGames.Where(g => g.Name.Contains(filterName, StringComparison.InvariantCultureIgnoreCase)).ToList();
+            if (filterMinPrice.HasValue)
+                allGames = allGames.Where(g => g.Price >= filterMinPrice.Value).ToList();
+            if (filterMaxPrice.HasValue)
+                allGames = allGames.Where(g => g.Price <= filterMaxPrice.Value).ToList();
+            if (!string.IsNullOrEmpty(filterCategory))
+                allGames = allGames.Where(g => g.Categories.Contains(filterCategory)).ToList();
+
+            var model = new HomeViewModel
+            {
+                Games = allGames,
+                FilterName = filterName,
+                FilterMinPrice = filterMinPrice,
+                FilterMaxPrice = filterMaxPrice,
+                FilterCategory = filterCategory,
+                FilterOwned = filterOwned
+            };
+
+            return View(model);
+        }
 
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+            return View(new ErrorViewModel
+            {
+                RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier
+            });
         }
     }
 }

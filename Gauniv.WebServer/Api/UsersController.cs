@@ -1,17 +1,17 @@
-﻿#region Header
+#region Licence
 // Cyril Tisserand
 // Projet Gauniv - WebServer
 // Gauniv 2025
 // 
 // Licence MIT
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-// and associated documentation files (the "Software"), to deal in the Software without restriction,
+// and associated documentation files (the “Software”), to deal in the Software without restriction,
 // including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
 // Any new method must be in a different namespace than the previous ones
 // and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
 // subject to the following conditions: 
 // The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. 
-// The Software is provided "as is", without warranty of any kind, express or implied,
+// The Software is provided “as is”, without warranty of any kind, express or implied,
 // including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement.
 // Local variables must be prefixed with local_
 // In no event shall the authors or copyright holders X be liable for any claim, damages or other liability,
@@ -26,33 +26,50 @@
 // 
 // Please respect the team's standards for any future contribution
 #endregion
-
 using Gauniv.WebServer.Data;
-using Mapster;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
+using Gauniv.WebServer.Dtos;
 
-
-namespace Gauniv.WebServer.Dtos
+[Route("api/1.0.0/users")]
+[ApiController]
+public class UsersController : ControllerBase
 {
-    public class MappingProfile : IRegister
+    private readonly ApplicationDbContext db;
+    private readonly IMapper mapper;
+    private readonly UserManager<User> userManager;
+
+    public UsersController(ApplicationDbContext db, IMapper mapper, UserManager<User> userManager)
     {
-        public void Register(TypeAdapterConfig config)
-        {
-    
-            config.NewConfig<Game, GameDto>()
-                .Map(dest => dest.Categories, src => src.Categories.Select(c => c.Name).ToList())
-                .Map(dest => dest.Owned, src => false);
+        this.db = db;
+        this.mapper = mapper;
+        this.userManager = userManager;
+    }
 
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> GetOtherUsers()
+    {
+        var currentUser = await userManager.GetUserAsync(User);
 
-            config.NewConfig<GameDto, Game>()
-                .Ignore(dest => dest.Categories);
+        if (currentUser == null)
+            return Unauthorized();
 
+        var users = await db.Users
+            .Where(u => u.Id != currentUser.Id)
+            .Select(u => new UserDto
+            {
+                Id = u.Id,
+                UserName = u.UserName,
+                FirstName = u.FirstName,
+                LastName = u.LastName,
+                Status = u.Status
+            })
+            .ToListAsync();
 
-            config.NewConfig<Category, CategoryDto>()
-                .Map(dest => dest.Games, src => src.Games.Select(g => g.Name).ToList());
-
-      
-            config.NewConfig<CategoryDto, Category>()
-                .Ignore(dest => dest.Games);
-        }
+        return Ok(users);
     }
 }

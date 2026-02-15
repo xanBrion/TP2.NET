@@ -27,32 +27,18 @@
 // Please respect the team's standards for any future contribution
 #endregion
 
-using Gauniv.WebServer.Data;
-using Mapster;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
-
-namespace Gauniv.WebServer.Dtos
+namespace Gauniv.WebServer.Data
 {
-    public class MappingProfile : IRegister
+    public class Category
     {
-        public void Register(TypeAdapterConfig config)
-        {
-    
-            config.NewConfig<Game, GameDto>()
-                .Map(dest => dest.Categories, src => src.Categories.Select(c => c.Name).ToList())
-                .Map(dest => dest.Owned, src => false);
-
-
-            config.NewConfig<GameDto, Game>()
-                .Ignore(dest => dest.Categories);
-
-
-            config.NewConfig<Category, CategoryDto>()
-                .Map(dest => dest.Games, src => src.Games.Select(g => g.Name).ToList());
-
-      
-            config.NewConfig<CategoryDto, Category>()
-                .Ignore(dest => dest.Games);
-        }
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        [Key]
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public ICollection<Game> Games { get; set; } = new List<Game>();
     }
 }
+

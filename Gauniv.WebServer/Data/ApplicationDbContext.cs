@@ -38,6 +38,23 @@ namespace Gauniv.WebServer.Data
             : base(options)
         {
         }
-        public DbSet<Game> Games { get; set; }
+        public DbSet<Game> Games { get; set;}
+        public DbSet<Category> Categories { get; set;}
+
+
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+
+            builder.Entity<Game>()
+                   .HasMany(g => g.PurchasedByUsers)
+                   .WithMany(u => u.PurchasedGames)
+                   .UsingEntity(j => j.ToTable("UserGames"));
+
+            builder.Entity<Game>()
+                   .HasMany(g => g.Categories)
+                   .WithMany(c => c.Games)
+                   .UsingEntity(j => j.ToTable("GameCategories"));
+        }
     }
 }
