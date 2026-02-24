@@ -15,10 +15,6 @@ public partial class Hub : Control
 	public double LobbyRefreshSeconds { get; set; } = 2.0;
 
 	private ItemList _roomsList;
-	private Button _createButton;
-	private Button _joinButton;
-	private Button _quikJoinButton;
-	private Button _observeButton;
 	private LineEdit _nickname;
 
 	private GameServerNetworkClient _networkClient;
@@ -32,10 +28,6 @@ public partial class Hub : Control
 	public override void _Ready()
 	{
 		_roomsList = GetNode<ItemList>("RoomsList");
-		_createButton = GetNode<Button>("Create");
-		_joinButton = GetNode<Button>("Join");
-		_quikJoinButton = GetNode<Button>("QuickJoin");
-		_observeButton = GetNode<Button>("Observe");
 		_nickname = GetNode<LineEdit>("Nickname");
 		_nickname.Text = GameLaunchContext.PreferredPseudo;
 		_roomsList.Clear();
@@ -76,7 +68,13 @@ public partial class Hub : Control
 
 		try
 		{
-			string pseudo = $"Hub_{(int)(GD.Randi() % 10000)}";
+			string pseudo = ResolvePseudoOrDefault();
+			GameLaunchContext.PreferredPseudo = pseudo;
+			if (string.IsNullOrWhiteSpace(_nickname.Text))
+			{
+				_nickname.Text = pseudo;
+			}
+
 			await _networkClient.ConnectAsPlayerAsync(ServerHost, ServerPort, pseudo).ConfigureAwait(false);
 			_connected = true;
 			await _networkClient.RequestLobbyListAsync().ConfigureAwait(false);
@@ -261,6 +259,23 @@ public partial class Hub : Control
 
 	private void SyncPseudoFromInput()
 	{
-		GameLaunchContext.PreferredPseudo = _nickname.Text.Trim();
+		GameLaunchContext.PreferredPseudo = ResolvePseudoOrDefault();
+	}
+
+	private string ResolvePseudoOrDefault()
+	{
+		string inputPseudo = _nickname.Text.Trim();
+		if (!string.IsNullOrWhiteSpace(inputPseudo))
+		{
+			return inputPseudo;
+		}
+
+		string contextPseudo = GameLaunchContext.PreferredPseudo.Trim();
+		if (!string.IsNullOrWhiteSpace(contextPseudo))
+		{
+			return contextPseudo;
+		}
+
+		return $"Godot_{(int)(GD.Randi() % 10000)}";
 	}
 }
