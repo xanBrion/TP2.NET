@@ -86,7 +86,6 @@ public partial class Main : Node
 		}
 
 		GetNode<Timer>("MobTimer").Stop();
-		GetNode<Timer>("ScoreTimer").Stop();
 		GetNode<Hud>("HUD").ShowGameOver();
 
 		GetNode<AudioStreamPlayer>("Music").Stop();
@@ -128,16 +127,6 @@ public partial class Main : Node
 		GetNode<AudioStreamPlayer>("Music").Play();
 	}
 
-	private void OnScoreTimerTimeout()
-	{
-		if (UseServerNetworking)
-		{
-			return;
-		}
-
-		// Score UI removed.
-	}
-
 	private void OnStartTimerTimeout()
 	{
 		if (UseServerNetworking)
@@ -146,7 +135,6 @@ public partial class Main : Node
 		}
 
 		GetNode<Timer>("MobTimer").Start();
-		GetNode<Timer>("ScoreTimer").Start();
 	}
 
 	private void OnMobTimerTimeout()
@@ -360,7 +348,6 @@ public partial class Main : Node
 		GetTree().CallGroup("mobs", Node.MethodName.QueueFree);
 
 		GetNode<Timer>("MobTimer").Stop();
-		GetNode<Timer>("ScoreTimer").Stop();
 		GetNode<Timer>("StartTimer").Stop();
 	}
 
