@@ -26,7 +26,6 @@
 // 
 // Please respect the team's standards for any future contribution
 #endregion
-using Mapster;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

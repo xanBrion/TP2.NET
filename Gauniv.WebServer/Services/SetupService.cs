@@ -81,9 +81,10 @@ namespace Gauniv.WebServer.Services
 
             var testGames = new[]
             {
-                new { Name = "Epic Adventure", Description = "Un RPG épique plein de quêtes.", Price = 19.99M, Categories = new [] { "Aventure", "RPG" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" },
-                new { Name = "Puzzle Mania", Description = "Résolvez des puzzles complexes.", Price = 4.99M, Categories = new [] { "Puzzle" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" },
-                new { Name = "Strategy King", Description = "Dominez vos ennemis grâce à votre stratégie.", Price = 14.99M, Categories = new [] { "Stratégie" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\test\payload.exe" }
+                new { Name = "Epic Adventure", Description = "Un RPG épique plein de quêtes.", Price = 19.99M, Categories = new [] { "Aventure", "RPG" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\gta7.zip" },
+                new { Name = "Puzzle Mania", Description = "Résolvez des puzzles complexes.", Price = 4.99M, Categories = new [] { "Puzzle" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\gta7.zip" },
+                new { Name = "Strategy King", Description = "Dominez vos ennemis grâce à votre stratégie.", Price = 14.99M, Categories = new [] { "Stratégie" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\gta7.zip" },
+                new { Name = "Gta 7", Description = "C'est le vrai de vrai réalisé par Felix et Xan.", Price = 9999M, Categories = new [] { "Puzzle" }, PayloadFile = @"C:\WORKSPACE\TP2.NET\Gauniv.WebServer\GamesStorage\gta7.zip" }
             };
 
             foreach (var g in testGames)
@@ -104,7 +105,7 @@ namespace Gauniv.WebServer.Services
                     Directory.Delete(gameFolder, true);
                 Directory.CreateDirectory(gameFolder);
 
-                var destPath = Path.Combine(gameFolder, "payload.exe");
+                var destPath = Path.Combine(gameFolder, $"{game.Name}.zip");
                 File.Copy(g.PayloadFile, destPath, true);
 
                 game.PayloadPath = destPath;
