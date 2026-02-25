@@ -180,7 +180,7 @@ public class GamesController : ControllerBase
             Directory.Delete(gameFolder, true);
         Directory.CreateDirectory(gameFolder);
 
-        var filePath = Path.Combine(gameFolder, $"{game.Name}.zip");
+        var filePath = Path.Combine(gameFolder, $"{game.Name}.7z");
         await using (var stream = new FileStream(filePath, FileMode.Create))
             await dto.PayloadFile.CopyToAsync(stream);
 
@@ -225,7 +225,7 @@ public class GamesController : ControllerBase
             var gameFolder = Path.Combine(storageRoot, $"game-{game.Id}");
             Directory.CreateDirectory(gameFolder);
 
-            var filePath = Path.Combine(gameFolder, $"{game.Name}.zip");
+            var filePath = Path.Combine(gameFolder, $"{game.Name}.7z");
 
             await using (var stream = new FileStream(filePath, FileMode.Create))
                 await dto.PayloadFile.CopyToAsync(stream);
@@ -299,7 +299,7 @@ public class GamesController : ControllerBase
         return File(
             stream,
             "application/octet-stream",
-            $"{game.Name}.zip",
+            $"{game.Name}.7z",
             enableRangeProcessing: true
         );
 
